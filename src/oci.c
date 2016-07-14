@@ -995,7 +995,7 @@ clr_oci_start (struct clr_oci_config *config,
 	GError        *error = NULL;
 	gboolean       wait = false;
 	struct process_watcher_data data = { 0 };
-	gchar         *config_file = NULL;
+	gchar         *config_file = "";
 
 	if (! config || ! state) {
 		return false;
