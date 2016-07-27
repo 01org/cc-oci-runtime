@@ -108,6 +108,7 @@ Install the following bundles and RPMs to enable our work in progress linux-cont
     sudo rpm -ivh --nodeps --force https://download.clearlinux.org/current/x86_64/os/Packages/json-glib-lib-1.2.0-8.x86_64.rpm
     sudo rpm -ivh --nodeps --force https://download.clearlinux.org/current/x86_64/os/Packages/linux-container-testing-4.5-9.x86_64.rpm
     sudo rpm -ivh --nodeps --force https://download.clearlinux.org/current/x86_64/os/Packages/linux-container-testing-extra-4.5-9.x86_64.rpm
+    sudo rpm -ivh --nodeps --force https://download.clearlinux.org/current/x86_64/os/Packages/iproute2-dev-4.3.0-25.x86_64.rpm
     #Note: Ignore the errorldconfig:*
     #/usr/lib64/libguile-2.0.so.22.7.2-gdb.scm is not an ELF file - it has the wrong magic bytes at the start.*
 
@@ -209,12 +210,16 @@ Locate where your OCI runtime got installed
       which cc-oci-runtime
       #typically /usr/bin/cc-oci-runtime
 
-Then edit the Docker_ systemd unit file ExecStart to make `Clear Containers`_ the default runtime.
+Then create a custom Docker_ systemd unit file to make `Clear Containers`_ the default runtime.
 
   ::
 
-    Edit: /usr/lib/systemd/system/docker-upstream.service
-    ExecStart=/usr/bin/dockerd-upstream --add-runtime cor=/usr/bin/cc-oci-runtime --default-runtime=cor -H fd://
+    sudo mkdir -p /etc/systemd/system/docker-upstream.service.d
+    cat << EOF | sudo tee -a /etc/systemd/system/docker-upstream.service.d/driver.conf
+    [Service]
+    ExecStart=
+    ExecStart=/usr/bin/dockerd-upstream --add-runtime cor=/usr/bin/cc-oci-runtime  --default-runtime=cor -H fd:// --storage-driver=overlay
+    EOF
 
 
 Install the Clear Container container kernel image
@@ -226,9 +231,10 @@ Install the Clear Container container kernel image
 
     sudo mkdir -p /var/lib/cc-oci-runtime/data/{image,kernel}
     cd /var/lib/cc-oci-runtime/data/image/
-    sudo curl -O https://download.clearlinux.org/releases/8900/clear/clear-8900-containers.img.xz
-    sudo unxz clear-8900-containers.img.xz
-    sudo cp -s clear-8900-containers.img clear-containers.img
+    latest=`curl -s https://download.clearlinux.org/latest`
+    sudo curl -O https://download.clearlinux.org/releases/${latest}/clear/clear-${latest}-containers.img.xz
+    sudo unxz clear-${latest}-containers.img.xz
+    sudo cp -s clear-${latest}-containers.img clear-containers.img
     sudo cp -s /usr/lib/kernel/vmlinux-4.5-9.container.testing /var/lib/cc-oci-runtime/data/kernel/vmlinux.container
 
 Restart Docker Again
