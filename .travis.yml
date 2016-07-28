@@ -1,5 +1,13 @@
+sudo: required
+dist: trusty
+
 language: c
 compiler: gcc
 
+before_script:
+- sudo apt-get -qq install valgrind cppcheck libglib2.0-dev
+
 script:
-- echo "Empty for now"
+- ./autogen.sh
+- make distcheck
+- make check
