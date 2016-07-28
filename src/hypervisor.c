@@ -147,6 +147,23 @@ cc_oci_expand_cmdline (struct cc_oci_config *config,
 
 	procsock_device = g_strdup_printf ("socket,id=procsock,path=%s,server,nowait", config->state.procsock_path);
 
+	struct special_tag {
+		const gchar* name;
+		const gchar* value;
+	} special_tags[] = {
+		{ "@WORKLOAD_DIR@"  , config->oci.root.path      },
+		{ "@KERNEL@"        , config->vm->kernel_path    },
+		{ "@KERNEL_PARAMS@" , config->vm->kernel_params  },
+		{ "@IMAGE@"         , config->vm->image_path     },
+		{ "@SIZE@"          , bytes                      },
+		{ "@COMMS_SOCKET@"  , config->state.comms_path   },
+		{ "@PROCESS_SOCKET@", procsock_device            },
+		{ "@CONSOLE_DEVICE@", console_device             },
+		{ "@NAME@"          , g_strrstr(uuid_str, "-")+1 },
+		{ "@UUID@"          , uuid_str                   },
+		{ NULL }
+	};
+
 	for (arg = args, count = 0; arg && *arg; arg++, count++) {
 		if (! count) {
 			/* command must be the first entry */
@@ -160,62 +177,27 @@ cc_oci_expand_cmdline (struct cc_oci_config *config,
 			}
 		}
 
-		ret = cc_oci_replace_string (arg, "@WORKLOAD_DIR@",
-				config->oci.root.path);
-		if (! ret) {
-			goto out;
+		/* first character is '#', line is empty */
+		if (**arg == '#') {
+			g_strlcpy(*arg, "\0", LINE_MAX);
+			continue;
 		}
 
-		ret = cc_oci_replace_string (arg, "@KERNEL@",
-				config->vm->kernel_path);
-		if (! ret) {
-			goto out;
+		/* looking for '#' */
+		gchar* ptr = g_strstr_len(*arg, LINE_MAX, "#");
+		while (ptr) {
+			/* if '[:space:]#' then replace '#' with '\0' (EOF) */
+			if (g_ascii_isspace(*(ptr-1))) {
+				g_strlcpy(ptr, "\0", LINE_MAX);
+				break;
+			}
+			ptr = g_strstr_len(ptr+1, LINE_MAX, "#");
 		}
 
-		ret = cc_oci_replace_string (arg, "@KERNEL_PARAMS@",
-				config->vm->kernel_params);
-		if (! ret) {
-			goto out;
-		}
-
-		ret = cc_oci_replace_string (arg, "@IMAGE@",
-				config->vm->image_path);
-		if (! ret) {
-			goto out;
-		}
-
-		ret = cc_oci_replace_string (arg, "@SIZE@", bytes);
-		if (! ret) {
-			goto out;
-		}
-
-		ret = cc_oci_replace_string (arg, "@COMMS_SOCKET@",
-				config->state.comms_path);
-		if (! ret) {
-			goto out;
-		}
-
-		ret = cc_oci_replace_string (arg, "@PROCESS_SOCKET@",
-				procsock_device);
-		if (! ret) {
-			goto out;
-		}
-
-		ret = cc_oci_replace_string (arg, "@CONSOLE_DEVICE@",
-				console_device);
-		if (! ret) {
-			goto out;
-		}
-
-		ret = cc_oci_replace_string (arg, "@NAME@",
-				g_strrstr(uuid_str, "-")+1);
-		if (! ret) {
-			goto out;
-		}
-
-		ret = cc_oci_replace_string (arg, "@UUID@", uuid_str);
-		if (! ret) {
-			goto out;
+		for (struct special_tag* tag=special_tags; tag && tag->name; tag++) {
+			if (! cc_oci_replace_string(arg, tag->name, tag->value)) {
+				goto out;
+			}
 		}
 	}
 
@@ -304,6 +286,9 @@ cc_oci_vm_args_get (struct cc_oci_config *config,
 {
 	gboolean  ret;
 	gchar    *args_file = NULL;
+	guint     line_count = 0;
+	gchar   **arg;
+	gchar   **new_args;
 
 	if (! (config && args)) {
 		return false;
@@ -324,6 +309,35 @@ cc_oci_vm_args_get (struct cc_oci_config *config,
 	if (! ret) {
 		goto out;
 	}
+
+	/* count non-empty lines */
+	for (arg = *args; arg && *arg; arg++) {
+		if (**arg != '\0') {
+			line_count++;
+		}
+	}
+
+	new_args = g_malloc0(sizeof(gchar*) * (line_count+1));
+
+	/* copy non-empty lines */
+	for (arg = *args, line_count = 0; arg && *arg; arg++) {
+		/* *do not* add empty lines */
+		if (**arg != '\0') {
+			/* container fails if arg contains spaces */
+			g_strstrip(*arg);
+			new_args[line_count] = *arg;
+			line_count++;
+		} else {
+			/* free empty lines */
+			g_free(*arg);
+		}
+	}
+
+	/* only free pointer to gchar* */
+	g_free(*args);
+
+	/* copy new args */
+	*args = new_args;
 
 	ret = true;
 out:
