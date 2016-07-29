@@ -996,8 +996,7 @@ exit:
  */
 gboolean
 cc_oci_vm_connect (struct cc_oci_config *config,
-		int argc,
-		char *const argv[]) {
+		struct  cc_oci_process_exec *exec_process) {
 	gchar     **args = NULL;
 	GError     *err = NULL;
 	gboolean    ret = false;
@@ -1012,49 +1011,23 @@ cc_oci_vm_connect (struct cc_oci_config *config,
 	guint i;
 
 	g_assert (config);
-	g_assert (argc);
-	g_assert (argv);
-
-	/* Check if the user has specified a shell to run.
-	 *
-	 * FIXME: This is a pragmatic (but potentially unreliable) solution
-	 * FIXME:   if the user wants to run an unknown shell.
-	 */
-	if (cc_oci_cmd_is_shell (argv[0])) {
-		cmd_is_just_shell = true;
+	if(! config->net.ip_address){
+		g_critical ("No IP address");
+		ret = false;
+		goto out;
 	}
 
-	/* The user wants to run an interactive shell.
-	 * However, this is the default with ssh if no command is
-	 * specified.
-	 *
-	 * If a shell is passed as the 1st arg, ssh gets
-	 * confused as it's expecting to run a non-interactive command,
-	 * so simply remove it to get the behaviour the user wants.
-	 *
-	 * An extra check is performed to ensure that the argument after
-	 * the shell is not an option to ensure that commands like:
-	 * "bash -c ..." still work as expected.
+	args_len = g_strv_length (exec_process->process.args);
+
+	/* +6 for :
+	 * CC_OCI_EXEC_CMD
+	 * -t ssh opiton for interactive ssh session
+	 * hostname to connect to
+	 * chroot command to access to container rootfs, but no mini-os
+	 * ROOTFS  where the container rootfs is localted
+	 * for NULL terminator
 	 */
-	if (argv[1] && argv[1][0] == '-') {
-		cmd_is_just_shell = false;
-	}
-
-	/* Just a shell, so remove the argument to get the expected
-	 * behavior of an interactive shell.
-	 */
-	if (cmd_is_just_shell) {
-		argc--;
-		argv++;
-	}
-
-	args_len = (guint)argc;
-
-	/* +2 for CC_OCI_EXEC_CMD + hostname to connect to */
-	args_len += 2;
-
-	/* +1 for NULL terminator */
-	args = g_new0 (gchar *, args_len + 1);
+	args = g_new0 (gchar *, args_len + 6);
 	if (! args) {
 		return false;
 	}
@@ -1066,20 +1039,37 @@ cc_oci_vm_connect (struct cc_oci_config *config,
 		goto out;
 	}
 
-	/* connection string to connect to the VM */
-	// FIXME: replace with proper connection string once networking details available.
-#if 0
-	args[1] = g_strdup_printf (ip_address);
-#else
-	g_critical ("not implemented yet");
-	ret = false;
-	goto out;
-#endif
+	/* Add ssh option -t, to force pseudo-terminal allocation
+	 * This will allow to execute interactive programs over ssh
+	 */
+	args[1] = g_strdup ("-t");
+	if (! args[1]) {
+		ret = false;
+		goto out;
+	}
+	/* The user and clear container ip adress to connect*/
+	args[2] = g_strdup_printf (CC_OCI_EXEC_USER "@%s", config->net.ip_address);
+	if (! args[2]) {
+		ret = false;
+		goto out;
+	}
+
+	args[3] = g_strdup ("chroot");
+	if (! args[3]) {
+		ret = false;
+		goto out;
+	}
+
+	args[4] = g_strdup (CC_OCI_ROOTFS_PATH);
+	if (! args[4]) {
+		ret = false;
+		goto out;
+	}
 
 	/* append argv to the end of args */
-	if (argc) {
+	if (args_len) {
 		for (i = 0; i < args_len; ++i) {
-			args[i+2] = g_strdup (argv[i]);
+			args[i+5] = g_strdup (exec_process->process.args[i]);
 		}
 	}
 
@@ -1116,6 +1106,11 @@ cc_oci_vm_connect (struct cc_oci_config *config,
 
 	g_debug ("child process ('%s') running with pid %u",
 			args[0], (unsigned)pid);
+
+
+	if (exec_process->pid_file) {
+		ret = cc_oci_create_pidfile (exec_process->pid_file, pid);
+	}
 
 	g_child_watch_add (pid, cc_oci_child_watcher, &exit_code);
 

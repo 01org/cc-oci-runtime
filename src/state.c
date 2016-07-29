@@ -59,6 +59,7 @@ static void handle_state_created_section(GNode*, struct handler_data*);
 static void handle_state_mounts_section(GNode*, struct handler_data*);
 static void handle_state_console_section(GNode*, struct handler_data*);
 static void handle_state_vm_section(GNode*, struct handler_data*);
+static void handle_state_net_section(GNode*, struct handler_data*);
 static void handle_state_annotations_section(GNode*, struct handler_data*);
 
 /*! Used to handle each section in \ref CC_OCI_STATE_FILE. */
@@ -88,6 +89,7 @@ static struct state_handler {
 	{ "mounts"      , handle_state_mounts_section      , 0 , 0 },
 	{ "console"     , handle_state_console_section     , 2 , 0 },
 	{ "vm"          , handle_state_vm_section          , 5 , 0 },
+	{ "net"         , handle_state_net_section         , 0 , 0 },
 	{ "annotations" , handle_state_annotations_section , 0 , 0 },
 
 	/* terminator */
@@ -344,6 +346,34 @@ handle_state_vm_section(GNode* node, struct handler_data* data) {
 }
 
 /*!
+ * handler for net section
+ *
+ * \param node \c GNode.
+ * \param data \ref handler_data.
+ */
+static void
+handle_state_net_section(GNode* node, struct handler_data* data) {
+
+	if (! (node && node->data)) {
+		return;
+	}
+	g_assert (data->state);
+
+	if (! (node->children && node->children->data)) {
+		g_critical("%s missing value", (char*)node->data);
+		return;
+	}
+
+	if (g_strcmp0(node->data, "ip_address") == 0) {
+		data->state->net.ip_address = g_strdup((gchar *)node->children->data);
+		(*(data->subelements_count))++;
+	}else {
+		g_critical("unknown console option: %s", (char*)node->data);
+	}
+
+}
+
+/*!
  * handler for annotations section
  *
  * \param node \c GNode.
@@ -531,6 +561,7 @@ cc_oci_state_free (struct oci_state *state)
 	g_free_if_set (state->procsock_path);
 	g_free_if_set (state->create_time);
 	g_free_if_set (state->console);
+	g_free_if_set (state->net.ip_address);
 
 	if (state->mounts) {
 		cc_oci_mounts_free_all (state->mounts);
@@ -564,6 +595,7 @@ cc_oci_state_file_create (struct cc_oci_config *config,
 	JsonObject  *obj = NULL;
 	JsonObject  *console = NULL;
 	JsonObject  *vm = NULL;
+	JsonObject  *net = NULL;
 	JsonObject  *annotation_obj = NULL;
 	JsonArray   *mounts = NULL;
 	gchar       *str = NULL;
@@ -677,6 +709,10 @@ cc_oci_state_file_create (struct cc_oci_config *config,
 			? config->vm->kernel_params : "");
 
 	json_object_set_object_member (obj, "vm", vm);
+
+	net = json_object_new ();
+	json_object_set_string_member (net, "ip_address", config->net.ip_address);
+	json_object_set_object_member (obj, "net", net);
 
 	if (config->oci.annotations) {
 		/* Add an object containing annotations */

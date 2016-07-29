@@ -65,7 +65,7 @@ handler_exec (const struct subcommand *sub,
 	g_assert (config);
 
 	if (handle_default_usage (argc, argv, sub->name,
-				&ret, 2, "<cmd> [args]")) {
+				&ret, 1, "<cmd> [args]")) {
 		return ret;
 	}
 
@@ -74,6 +74,13 @@ handler_exec (const struct subcommand *sub,
 
 	/* Jump over the container name */
 	argv++; argc--;
+
+	if ( argc == 0  && ! start_data.process_json) {
+		g_print ("Usage: %s <container-id> <cmd> [args]\n",
+			sub->name);
+		return false;
+
+	}
 
 	ret = cc_oci_get_config_and_state (&config_file, config, &state);
 	if (! ret) {
