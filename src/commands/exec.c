@@ -20,6 +20,38 @@
 
 #include "command.h"
 
+extern struct start_data start_data;
+
+static GOptionEntry options_exec[] =
+{
+	{
+		"console", 0, G_OPTION_FLAG_OPTIONAL_ARG,
+		G_OPTION_ARG_CALLBACK, handle_option_console,
+		"set pty console that will be used in the container",
+		NULL
+	},
+	{
+		"process", 'p' , G_OPTION_FLAG_NONE,
+		G_OPTION_ARG_STRING, &start_data.process_json,
+		"specify path to process.json",
+		NULL
+	},
+	{
+		"detach", 'd' , G_OPTION_FLAG_NONE,
+		G_OPTION_ARG_NONE, &start_data.detach,
+		"exec process in detach mode",
+		NULL
+	},
+	{
+		"pid-file", 0, G_OPTION_FLAG_NONE,
+		G_OPTION_ARG_STRING, &start_data.pid_file,
+		"the file to write the process ID of the new "
+		"process executed in the container",
+		NULL
+	},
+	{NULL}
+};
+
 static gboolean
 handler_exec (const struct subcommand *sub,
 		struct cc_oci_config *config,
@@ -33,7 +65,7 @@ handler_exec (const struct subcommand *sub,
 	g_assert (config);
 
 	if (handle_default_usage (argc, argv, sub->name,
-				&ret, 2, "<cmd> [args]")) {
+				&ret, 1, "<cmd> [args]")) {
 		return ret;
 	}
 
@@ -42,6 +74,13 @@ handler_exec (const struct subcommand *sub,
 
 	/* Jump over the container name */
 	argv++; argc--;
+
+	if ( argc == 0  && ! start_data.process_json) {
+		g_print ("Usage: %s <container-id> <cmd> [args]\n",
+			sub->name);
+		return false;
+
+	}
 
 	ret = cc_oci_get_config_and_state (&config_file, config, &state);
 	if (! ret) {
@@ -65,6 +104,7 @@ out:
 struct subcommand command_exec =
 {
 	.name        = "exec",
+	.options     = options_exec,
 	.handler     = handler_exec,
 	.description = "execute a new task inside an existing container",
 };
