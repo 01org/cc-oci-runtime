@@ -20,6 +20,38 @@
 
 #include "command.h"
 
+extern struct start_data start_data;
+
+static GOptionEntry options_exec[] =
+{
+	{
+		"console", 0, G_OPTION_FLAG_OPTIONAL_ARG,
+		G_OPTION_ARG_CALLBACK, handle_option_console,
+		"set pty console that will be used in the container",
+		NULL
+	},
+	{
+		"process", 'p' , G_OPTION_FLAG_NONE,
+		G_OPTION_ARG_STRING, &start_data.process_json,
+		"specify path to process.json",
+		NULL
+	},
+	{
+		"detach", 'd' , G_OPTION_FLAG_NONE,
+		G_OPTION_ARG_NONE, &start_data.detach,
+		"exec process in detach mode",
+		NULL
+	},
+	{
+		"pid-file", 0, G_OPTION_FLAG_NONE,
+		G_OPTION_ARG_STRING, &start_data.pid_file,
+		"the file to write the process ID of the new "
+		"process executed in the container",
+		NULL
+	},
+	{NULL}
+};
+
 static gboolean
 handler_exec (const struct subcommand *sub,
 		struct cc_oci_config *config,
@@ -65,6 +97,7 @@ out:
 struct subcommand command_exec =
 {
 	.name        = "exec",
+	.options     = options_exec,
 	.handler     = handler_exec,
 	.description = "execute a new task inside an existing container",
 };

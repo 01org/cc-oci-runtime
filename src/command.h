@@ -74,6 +74,7 @@ struct start_data {
 	gchar *bundle;
 	gchar *console;
 	gchar *pid_file;
+	gchar *process_json;
 	gboolean detach;
 	gboolean dry_run_mode;
 };
