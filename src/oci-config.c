@@ -132,6 +132,9 @@ cc_oci_config_free (struct cc_oci_config *config)
 		g_strfreev (config->oci.process.args);
 	}
 
+	g_free_if_set (config->oci.process.user.username);
+	g_free_if_set (config->oci.process.user.groupname);
+
 	if (config->oci.process.env) {
 		g_strfreev (config->oci.process.env);
 	}

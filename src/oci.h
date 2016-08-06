@@ -144,6 +144,8 @@ struct oci_cfg_user {
 	uid_t    uid; /*!< User ID to run workload as. */
 	gid_t    gid; /*!< Group ID to run workload as. */
 	gid_t  **additionalGids; /*!< extra Group IDs to set workload as a member of */
+	gchar   *username;
+	gchar   *groupname;
 };
 
 struct oci_cfg_hook {

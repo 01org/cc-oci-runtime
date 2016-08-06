@@ -30,6 +30,8 @@
 #include <stdbool.h>
 #include <errno.h>
 #include <sys/types.h>
+#include <stdlib.h>
+
 
 #include <glib.h>
 #include <glib/gstdio.h>
@@ -516,13 +518,178 @@ fail1:
 }
 
 /*!
+ * Lookup user name
+ *
+ * \param password_path Path to the password file.
+ * \param userid User id to lookup.
+ *
+ * \return \c user name on success, else \c NULL.
+ */
+private gchar*
+lookup_user_name(gchar *password_path, uid_t userid)
+{
+	FILE       *fp = NULL;
+	uid_t      uid;
+	gchar      *matched_uname = NULL;
+	char       *line = NULL;
+	size_t     len = 0;
+	gchar      *eptr;
+	gboolean   done = false;
+
+	fp = g_fopen (password_path, "r");
+	if ( fp == NULL) {
+		return NULL;
+	}
+
+	while ( getline (&line , &len, fp) != -1) {
+		gchar **tokens = g_strsplit (line, ":", 7);
+
+		// Format: name:password:UID:GID:GECOS:directory:shell
+
+		if ( g_strv_length (tokens) != 7 ) {
+			// Unless we get a bad /etc/password file, this shouldnt happen
+			g_critical ("Invalid password file");
+			done = true;
+			goto endloop;
+		}
+
+		uid = (uid_t) strtol (tokens[2], &eptr, 10);
+		if ( eptr == tokens[2] || *eptr != '\0') {
+			g_critical ("Invalid password file");
+			done = true;
+			goto endloop;
+		}
+
+		if ( userid == uid) {
+			matched_uname = strdup (tokens[0]);
+			done = true;
+			goto endloop;
+		}
+endloop:
+		free (line);
+		line = NULL; /* Need to set this for getline to allocate memory */
+		g_strfreev (tokens);
+		if ( done ) {
+			break;
+		}
+	}
+
+	fclose (fp);
+	return matched_uname;
+}
+
+/*!
+ * Lookup group name
+ *
+ * \param group_path Path to the container group file.
+ * \param gid_to_match Group id to lookup.
+ *
+ * \return \c group name on success, else \c NULL.
+ */
+private gchar*
+lookup_group_name(gchar *group_path, gid_t gid_to_match)
+{
+	FILE       *fp;
+	gid_t      gid;
+	gchar      *matched_gname = NULL;
+	gchar      *line = NULL;
+	size_t     len = 0;
+	gboolean   done = false;
+	gchar      *eptr;
+
+	fp = fopen (group_path, "r");
+	if ( fp == NULL) {
+		return NULL;
+	}
+
+	while ( getline (&line , &len, fp) != -1) {
+
+		gchar **tokens = g_strsplit ( line, ":", 4);
+
+		//Format: group_name:password:GID:user_list
+
+		if ( g_strv_length (tokens) != 4 ) {
+			// Unless we get a bad /etc/group file, this shouldnt happen
+			g_critical ("Invalid group file");
+			done = true;
+			goto end;
+		}
+
+		gid = (gid_t) strtol (tokens[2], &eptr, 10);
+		if ( eptr == tokens[2] || *eptr != '\0') {
+			g_critical("Invalid group file");
+			done = true;
+			goto end;
+		}
+
+		if ( gid_to_match == gid) {
+			matched_gname = strdup(tokens[0]);
+			done = true;
+			goto end;
+		}
+
+end:
+		free (line);
+		line = NULL; /* Need to set this for getline to allocate memory */
+		g_strfreev (tokens);
+
+		if ( done) {
+			break;
+		}
+        }
+
+	fclose (fp);
+	return matched_gname;
+
+}
+
+/*!
+ * Lookup and set user and group name
+ *
+ * \param config \ref cc_oci_config
+ *
+ */
+
+private void
+lookup_user_and_group_name(struct cc_oci_config *config)
+{
+	gchar   *password_path = NULL;
+	gchar   *group_path = NULL;
+	gchar   *username;
+	gchar   *groupname;
+
+	password_path = g_strdup_printf ("%s/%s", config->oci.root.path, "etc/passwd");
+	username = lookup_user_name (password_path, config->oci.process.user.uid);
+
+	if ( ! username) {
+		/* This should never happen as this check is handled
+		 * by layers above runtime. Default to root
+		 */
+		config->oci.process.user.username = g_strdup("root");
+	} else {
+		config->oci.process.user.username = username;
+	}
+
+	group_path = g_strdup_printf ("%s/%s", config->oci.root.path, "etc/group");
+	groupname = lookup_group_name (group_path, config->oci.process.user.gid);
+
+	if ( ! groupname) {
+		config->oci.process.user.groupname = g_strdup ("root");
+	} else {
+		config->oci.process.user.groupname = groupname;
+	}
+
+	g_free (password_path);
+	g_free (group_path);
+}
+
+/*!
  * Create the containers Clear Linux workload file
  * (\ref CC_OCI_WORKLOAD_FILE).
  *
  * \param config \ref cc_oci_config.
  *
- * \warning FIXME: Need to support running the workload as a different user/group.
- * Something like:
+ * Workload is run as :
  *
  *      su -c "sg $group -c $cmd" $user
  *
@@ -538,6 +705,11 @@ cc_oci_create_container_workload (struct cc_oci_config *config)
 	g_autofree gchar   *cwd = NULL;
 	gboolean           ret = false;
 	gchar             **args = NULL;
+	gchar             *quoted_workload_cmd = NULL;
+	gchar             *sg_command = NULL;
+	gchar             *quoted_sg_command = NULL;
+	gchar             *su_command = NULL;
+
 
 	if (! (config && config->oci.process.args)) {
 		return false;
@@ -547,6 +719,8 @@ cc_oci_create_container_workload (struct cc_oci_config *config)
 		g_critical ("No vm configuration");
 		goto out;
 	}
+
+	lookup_user_and_group_name(config);
 
 	if (config->oci.process.env) {
 		g_autofree gchar  *envpath = NULL;
@@ -595,6 +769,14 @@ cc_oci_create_container_workload (struct cc_oci_config *config)
 		goto out;
 	}
 
+	quoted_workload_cmd = g_shell_quote (workload_cmdline);
+	sg_command = g_strdup_printf ("sg %s -c %s",
+				config->oci.process.user.groupname,
+				quoted_workload_cmd);
+	quoted_sg_command = g_shell_quote (sg_command);
+	su_command = g_strdup_printf ("su -c %s %s", quoted_sg_command,
+					config->oci.process.user.username);
+
 	contents = g_string_new("");
 	if (! contents) {
 		goto out;
@@ -607,7 +789,8 @@ cc_oci_create_container_workload (struct cc_oci_config *config)
 			"%s\n",
 			CC_OCI_WORKLOAD_SHELL,
 			cwd,
-			workload_cmdline);
+			su_command);
+
 
 	ret = g_file_set_contents (config->vm->workload_path,
 			contents->str, (gssize)contents->len, &err);
@@ -631,6 +814,10 @@ cc_oci_create_container_workload (struct cc_oci_config *config)
 
 out:
 	g_free_if_set (workload_cmdline);
+	g_free_if_set (quoted_workload_cmd);
+	g_free_if_set (sg_command);
+	g_free_if_set (quoted_sg_command);
+	g_free_if_set (su_command);
 	if (contents) {
 		g_string_free(contents, true);
 	}
