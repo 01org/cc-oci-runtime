@@ -178,6 +178,7 @@ cc_oci_get_config_and_state (gchar **config_file,
 	config->bundle_path = g_strdup ((*state)->bundle_path);
 	config->state.workload_pid = (*state)->pid;
 	config->state.status = (*state)->status;
+	config->net.ip_address = g_strdup((*state)->net.ip_address);
 
 	g_strlcpy (config->state.comms_path, (*state)->comms_path,
 			sizeof (config->state.comms_path));
@@ -671,6 +672,71 @@ cc_oci_cleanup (struct cc_oci_config *config)
 	}
 
 	return true;
+}
+
+/*!
+ * Parse the \c GNode representation of process.json
+ * and save in the provided \ref cc_oci_process_exec.
+ *
+ * \param process json file
+ * \param args[out] command arguments vector
+ *
+ * \return \c true on success, else \c false.
+ */
+static gboolean
+cc_oci_process_file_parse (char* process_json, struct  cc_oci_process_exec *exec_process)
+{
+	GNode    *root = NULL;
+	GNode    *node = NULL;
+	gboolean  ret = false;
+
+	if(! (process_json && exec_process) ) {
+		goto out;
+	}
+
+	g_debug ("using process file %s", process_json);
+
+	if (! cc_oci_json_parse (&root, process_json)) {
+		goto out;
+	}
+
+#ifdef DEBUG
+	cc_oci_node_dump (root);
+#endif /*DEBUG*/
+
+	for (node = g_node_first_child(root); node;
+		node = g_node_next_sibling(node)) {
+
+		if (! node->data) {
+			continue;
+		}
+		if (node->children) {
+			if (g_strcmp0 (node->data, "args") == 0) {
+				exec_process->process.args = node_to_strv(node);
+				ret = true;
+				break;
+			}else if (g_strcmp0 (node->data, "containerdStdin") == 0) {
+				exec_process->stdin_file = g_strdup (node->children->data);
+			}else if (g_strcmp0 (node->data, "containerdStdout") == 0) {
+				exec_process->stdout_file = g_strdup (node->children->data);
+			}else if (g_strcmp0 (node->data, "containerdStderr") == 0) {
+				exec_process->stderr_file = g_strdup (node->children->data);
+			}if (g_strcmp0(root->data, "cwd") == 0) {
+				if (snprintf(exec_process->process.cwd,
+					sizeof(exec_process->process.cwd),
+					"%s", (char*)node->children->data) < 0) {
+
+					g_critical("failed to copy process cwd");
+					ret = false;
+					goto out;
+				}
+			}
+		}
+	}
+
+out:
+	g_free_node (root);
+	return ret;
 }
 
 /*!
@@ -1320,17 +1386,57 @@ cc_oci_exec (struct cc_oci_config *config,
 		int argc,
 		char *const argv[])
 {
-	g_assert (config);
-	g_assert (state);
-	g_assert (argc);
-	g_assert (argv);
-
-	if (! cc_oci_vm_connect (config, argc, argv)) {
-		g_critical ("failed to connect to VM");
-		return false;
+	struct  cc_oci_process_exec exec_process = {0};
+	int     i;
+	gboolean ret = false;;
+	if (! config) {
+		goto out;
 	}
 
-	return true;
+	if (! state) {
+		goto out;
+	}
+
+	if (state->status != OCI_STATUS_RUNNING) {
+		g_critical("container is not running");
+		goto out;
+	}
+
+	/* copy exec args to cc_oci_exec_process struct */
+	if (argc && argv) {
+		exec_process.process.args = g_new0 (gchar *, (gsize)argc + 1);
+		if (! exec_process.process.args) {
+			goto out;
+		}
+		for (i = 0; i < argc; ++i) {
+			exec_process.process.args[i] = g_strdup (argv[i]);
+		}
+		exec_process.detach = start_data.detach;
+		exec_process.pid_file = g_strdup(start_data.pid_file);
+		exec_process.console = g_strdup(start_data.console);
+	}else {
+		/*No args provided in exec command, lets parse process.json file*/
+		ret = cc_oci_process_file_parse (start_data.process_json, &exec_process);
+		if (! ret) {
+			goto out;
+		}
+	}
+
+	if (! cc_oci_vm_connect (config, &exec_process)) {
+		g_critical ("failed to connect to VM");
+		ret = false;
+	}
+
+	ret = true;
+out:
+	g_strfreev (exec_process.process.args);
+	g_free_if_set (exec_process.console);
+	g_free_if_set (exec_process.pid_file);
+	g_free_if_set (exec_process.stdin_file);
+	g_free_if_set (exec_process.stdout_file);
+	g_free_if_set (exec_process.stderr_file);
+
+	return ret;
 }
 
 /*!

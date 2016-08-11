@@ -101,6 +101,12 @@
 /** Command to use to allow "exec" to connect to the container. */
 #define CC_OCI_EXEC_CMD               "ssh"
 
+/** User to use to connect to the container. */
+#define CC_OCI_EXEC_USER               "root"
+
+/** container rootfs path in mini-os */
+#define CC_OCI_ROOTFS_PATH               "/opt/rootfs"
+
 /** File that contains vm spec configuration, used if vm node
  * in CC_OCI_CONFIG_FILE bundle file
 */
@@ -356,6 +362,8 @@ struct oci_state {
 	gboolean         use_socket_console;
 
 	struct cc_oci_vm_cfg *vm;
+
+	struct cc_oci_net_cfg net;
 };
 
 /** clr-specific state fields. */
@@ -454,6 +462,17 @@ struct cc_oci_config {
 
 	/** If \c true, don't wait for hypervisor process to finish. */
 	gboolean detached_mode;
+};
+
+/** clr-specific process exec details. */
+struct cc_oci_process_exec {
+	struct oci_cfg_process process;
+	gchar *pid_file;
+	gchar *console;
+	gchar *stdin_file;
+	gchar *stdout_file;
+	gchar *stderr_file;
+	gboolean detach;
 };
 
 gboolean cc_oci_attach(struct cc_oci_config *config,
