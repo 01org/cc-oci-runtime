@@ -30,8 +30,7 @@ script:
 - make -j5 CFLAGS=-Werror check
 
 after_failure:
-- printf "=== Build failed ===\n"
-- for f in $(ls *.log); do printf "\n=== Log file: '$f' ===\n\n"; cat "$f"; done
+- ./.travis-teardown.sh
 
 notifications:
   email:
