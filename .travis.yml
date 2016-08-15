@@ -29,6 +29,10 @@ script:
 - ./autogen.sh --enable-cppcheck --enable-valgrind --disable-silent-rules
 - make -j5 CFLAGS=-Werror check
 
+after_failure:
+- printf "=== Build failed ===\n"
+- for f in $(ls *.log); do printf "\n=== Log file: '$f' ===\n\n"; cat "$f"; done
+
 notifications:
   email:
     recipients:
