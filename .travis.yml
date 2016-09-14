@@ -6,6 +6,13 @@ compiler:
   - gcc
   - clang
 
+services:
+  - docker
+
+cache:
+  directories:
+    - /usr/local
+
 env:
   global:
     - PATH=/usr/local/bin:$PATH
@@ -23,7 +30,7 @@ before_script:
 - ./.travis-setup.sh
 
 script:
-- ./autogen.sh --enable-cppcheck --enable-valgrind --disable-valgrind-helgrind --disable-valgrind-drd --disable-silent-rules
+- ./autogen.sh --enable-cppcheck --enable-valgrind --disable-valgrind-helgrind --disable-valgrind-drd --disable-silent-rules --with-cc-image=/usr/share/clear-containers/clear-containers.img --with-cc-kernel=/usr/share/clear-containers/vmlinux.container --with-qemu-path=/usr/local/bin/qemu-system-x86_64
 - make -j5 CFLAGS=-Werror check
 
 after_failure:
