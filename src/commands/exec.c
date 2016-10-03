@@ -19,6 +19,7 @@
  */
 
 #include "command.h"
+#include "oci-config.h"
 
 extern struct start_data start_data;
 
@@ -57,16 +58,17 @@ handler_exec (const struct subcommand *sub,
 		struct cc_oci_config *config,
 		int argc, char *argv[])
 {
-	struct oci_state  *state = NULL;
-	gchar             *config_file = NULL;
-	gboolean           ret;
+	struct cc_oci_process_exec  exec_process = { {0} };
+	struct oci_state            *state = NULL;
+	gchar                       *config_file = NULL;
+	gboolean                    ret;
 
 	g_assert (sub);
 	g_assert (config);
 
 	if (handle_default_usage (argc, argv, sub->name,
 				&ret, 1, "<cmd> [args]")) {
-		return ret;
+		goto out;
 	}
 
 	/* Used to allow us to find the state file */
@@ -75,10 +77,11 @@ handler_exec (const struct subcommand *sub,
 	/* Jump over the container name */
 	argv++; argc--;
 
-	if ( argc == 0  && ! start_data.process_json) {
+	/* Verify that exits process information (args or process.json)*/
+	if ( argc < 1  && ! start_data.process_json) {
 		g_print ("Usage: %s <container-id> <cmd> [args]\n",
 			sub->name);
-		return false;
+		goto out;
 
 	}
 
@@ -87,7 +90,24 @@ handler_exec (const struct subcommand *sub,
 		goto out;
 	}
 
-	ret = cc_oci_exec (config, state, argc, argv);
+	/* Copy args and options to exec_process */
+	if(argc > 0) {
+		exec_process.process.args = g_new0 (gchar *, (gsize)argc + 1);
+	}
+
+	for (int  i = 0; i < argc; ++i) {
+	       exec_process.process.args[i] = g_strdup (argv[i]);
+	       if (! exec_process.process.args[i]){
+		       goto out;
+	       }
+	}
+
+	exec_process.detach = start_data.detach;
+	exec_process.pid_file = g_strdup(start_data.pid_file);
+	exec_process.console = g_strdup(start_data.console);
+	exec_process.process_json_file = g_strdup(start_data.process_json);
+
+	ret = cc_oci_exec (config, state, &exec_process);
 	if (! ret) {
 		goto out;
 	}
@@ -97,6 +117,7 @@ handler_exec (const struct subcommand *sub,
 out:
 	g_free_if_set (config_file);
 	cc_oci_state_free (state);
+	cc_oci_process_exec_free(&exec_process);
 
 	return ret;
 }

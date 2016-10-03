@@ -771,6 +771,47 @@ cc_oci_cleanup (struct cc_oci_config *config)
 }
 
 /*!
+ * Parse the \c GNode representation of 
+ * process_json_file from \ref oci_process_exec 
+ * and save in the provided \ref cc_oci_process_exec.
+ *
+ * \param exec_process \ref cc_oci_process_exec
+ *
+ * \return \c true on success, else \c false.
+ */
+static gboolean
+cc_oci_process_file_parse (struct  cc_oci_process_exec *exec_process)
+{
+	GNode    *root = NULL;
+	GNode    *node = NULL;
+	gboolean  ret = false;
+
+	if(! (exec_process && exec_process->process_json_file)) {
+		return true;
+	}
+
+	g_debug ("using process file %s", exec_process->process_json_file);
+
+	if (! cc_oci_json_parse (&root, exec_process->process_json_file)) {
+		goto out;
+	}
+#ifdef DEBUG
+	cc_oci_node_dump (root);
+#endif /*DEBUG*/
+
+	/* process the GNode representation of process_json*/
+	if (!process_handle_node (root, &exec_process->process)) {
+		g_critical ("failed to process config");
+		goto out;
+	}
+	ret = true;
+
+out:
+	g_free_node (root);
+	return ret;
+}
+
+/*!
  * Parse the \c GNode representation of \ref CC_OCI_CONFIG_FILE
  * and save values in the provided \ref cc_oci_config.
  *
@@ -1418,20 +1459,33 @@ cc_oci_toggle (struct cc_oci_config *config,
 gboolean
 cc_oci_exec (struct cc_oci_config *config,
 		struct oci_state *state,
-		int argc,
-		char *const argv[])
+		struct cc_oci_process_exec *exec_process)
 {
-	g_assert (config);
-	g_assert (state);
-	g_assert (argc);
-	g_assert (argv);
+	gboolean ret = false;
 
-	if (! cc_oci_vm_connect (config, argc, argv)) {
-		g_critical ("failed to connect to VM");
-		return false;
+	if (! (config &&  state && exec_process)) {
+		goto out;
 	}
 
-	return true;
+	if (state->status != OCI_STATUS_RUNNING) {
+		g_critical("container is not running");
+		goto out;
+	}
+
+	ret = cc_oci_process_file_parse (exec_process);
+	if (! ret) {
+		goto out;
+	}
+
+	ret = cc_oci_send_to_proxy(config, exec_process);
+	if (! ret) {
+		g_critical ("failed to connect to VM");
+		goto out;
+	}
+
+	ret = true;
+out:
+	return ret;
 }
 
 /*!

@@ -25,45 +25,83 @@
 #include "util.h"
 
 static void
-handle_user_section (GNode *root, struct cc_oci_config *config)
+handle_user_section (GNode *root, struct oci_cfg_user *user)
 {
 	if (! root) {
 		return;
 	}
 
 	if (g_strcmp0(root->data, "uid") == 0) {
-		config->oci.process.user.uid = (uid_t)atoi (root->children->data);
+		user->uid = (uid_t)atoi (root->children->data);
 	}
 	if (g_strcmp0(root->data, "gid") == 0) {
-		config->oci.process.user.gid = (gid_t)atoi (root->children->data);
+		user->gid = (gid_t)atoi (root->children->data);
 	}
 }
 
 static void
-handle_process_section(GNode* root, struct cc_oci_config* config) {
+handle_process_section(GNode* root, struct oci_cfg_process* process) {
 	if (! (root && root->children)) {
 		return;
 	}
 	if (g_strcmp0(root->data, "cwd") == 0) {
-		if (snprintf(config->oci.process.cwd,
-		    sizeof(config->oci.process.cwd),
+		if (snprintf(process->cwd,
+		    sizeof(process->cwd),
 		    "%s", (char*)root->children->data) < 0) {
 			g_critical("failed to copy process cwd");
 		}
 	} else if(g_strcmp0(root->data, "args") == 0) {
-		config->oci.process.args = node_to_strv(root);
+		process->args = node_to_strv(root);
 	} else if(g_strcmp0(root->data, "env") == 0) {
-		config->oci.process.env = node_to_strv(root);
+		process->env = node_to_strv(root);
 	} else if(g_strcmp0(root->data, "terminal") == 0) {
-		config->oci.process.terminal =
+		process->terminal =
 			!g_strcmp0 ((gchar *)root->children->data, "true")
 			? true : false;
 	} else if(g_strcmp0(root->data, "user") == 0) {
 		g_node_children_foreach (root, G_TRAVERSE_ALL,
-				(GNodeForeachFunc)handle_user_section, config);
+				(GNodeForeachFunc)handle_user_section, &process->user);
+	} else if(g_strcmp0(root->data, "containerdStdin") == 0) {
+		process->stdin_file = g_strdup((gchar*)root->children->data);
+	} else if(g_strcmp0(root->data, "containerdStdout") == 0) {
+		process->stdout_file = g_strdup((gchar*)root->children->data);
+	} else if(g_strcmp0(root->data, "containerdStderr") == 0) {
+		process->stderr_file = g_strdup((gchar*)root->children->data);
 	}
 }
 
+bool
+process_handle_node(GNode *root, struct oci_cfg_process *process)
+{
+	if (! root) {
+		g_critical("root node is NULL");
+		return false;
+	}
+
+	if (! process) {
+		g_critical("oci process is NULL");
+		return false;
+	}
+	g_node_children_foreach(root, G_TRAVERSE_ALL,
+		(GNodeForeachFunc)handle_process_section, process);
+
+	if (! process->cwd[0]) {
+		g_critical ("no cwd");
+		return false;
+	}
+
+	if (process->cwd[0] != '/') {
+		g_critical ("cwd is not absolute: %s",
+				process->cwd);
+		return false;
+	}
+
+	if (! process->args) {
+		g_critical ("no args");
+		return false;
+	}
+	return true;
+}
 static bool
 process_handle_section(GNode* root, struct cc_oci_config* config)
 {
@@ -76,27 +114,7 @@ process_handle_section(GNode* root, struct cc_oci_config* config)
 		g_critical("oci config is NULL");
 		return false;
 	}
-
-	g_node_children_foreach(root, G_TRAVERSE_ALL,
-		(GNodeForeachFunc)handle_process_section, config);
-
-	if (! config->oci.process.cwd[0]) {
-		g_critical ("no cwd");
-		return false;
-	}
-
-	if (config->oci.process.cwd[0] != '/') {
-		g_critical ("cwd is not absolute: %s",
-				config->oci.process.cwd);
-		return false;
-	}
-
-	if (! config->oci.process.args) {
-		g_critical ("no args");
-		return false;
-	}
-
-	return true;
+	return process_handle_node(root, &config->oci.process);
 }
 
 struct spec_handler process_spec_handler = {

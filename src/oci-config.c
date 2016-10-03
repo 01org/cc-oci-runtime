@@ -137,6 +137,10 @@ cc_oci_config_free (struct cc_oci_config *config)
 		g_strfreev (config->oci.process.env);
 	}
 
+	g_free_if_set (config->oci.process.stdin_file);
+	g_free_if_set (config->oci.process.stdout_file);
+	g_free_if_set (config->oci.process.stderr_file);
+
 	cc_oci_mounts_free_all (config->oci.mounts);
 	cc_oci_annotations_free_all (config->oci.annotations);
 
@@ -215,4 +219,25 @@ cc_oci_process_config (GNode *root, struct cc_oci_config *config,
 	}
 
 	return true;
+}
+
+/*!
+ * Free all resources associated with a static \ref cc_oci_process_exec.
+ *
+ * \param exec_process \ref cc_oci_process_exec.
+ */
+void
+cc_oci_process_exec_free (struct cc_oci_process_exec *exec_process)
+{
+	if (! exec_process) {
+		return;
+	}
+	g_strfreev (exec_process->process.args);
+	g_free_if_set (exec_process->process.stdin_file);
+	g_free_if_set (exec_process->process.stdout_file);
+	g_free_if_set (exec_process->process.stderr_file);
+	g_free_if_set (exec_process->console);
+	g_free_if_set (exec_process->pid_file);
+	g_free_if_set (exec_process->process_json_file);
+
 }

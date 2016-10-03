@@ -34,4 +34,7 @@ void cc_oci_hook_free (struct oci_cfg_hook *h);
 gboolean
 cc_oci_process_config (GNode* root, struct cc_oci_config* config,
 	struct spec_handler** spec_handlers);
+
+void
+cc_oci_process_exec_free (struct cc_oci_process_exec *exec_process);
 #endif /* _CC_OCI_CONFIG_H */
