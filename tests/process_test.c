@@ -35,48 +35,6 @@ gboolean cc_run_hook (struct oci_cfg_hook* hook,
 
 extern GMainLoop *hook_loop;
 
-START_TEST(test_cc_oci_cmd_is_shell) {
-
-	ck_assert (! cc_oci_cmd_is_shell (""));
-	ck_assert (! cc_oci_cmd_is_shell (NULL));
-
-	ck_assert (cc_oci_cmd_is_shell ("sh"));
-	ck_assert (cc_oci_cmd_is_shell ("/sh"));
-	ck_assert (cc_oci_cmd_is_shell ("/bin/sh"));
-	ck_assert (cc_oci_cmd_is_shell ("/usr/bin/sh"));
-	ck_assert (cc_oci_cmd_is_shell ("/usr/local/bin/sh"));
-
-	ck_assert (cc_oci_cmd_is_shell ("bash"));
-	ck_assert (cc_oci_cmd_is_shell ("/bash"));
-	ck_assert (cc_oci_cmd_is_shell ("/bin/bash"));
-	ck_assert (cc_oci_cmd_is_shell ("/usr/bin/bash"));
-	ck_assert (cc_oci_cmd_is_shell ("/usr/local/bin/bash"));
-
-	ck_assert (cc_oci_cmd_is_shell ("zsh"));
-	ck_assert (cc_oci_cmd_is_shell ("/zsh"));
-	ck_assert (cc_oci_cmd_is_shell ("/bin/zsh"));
-	ck_assert (cc_oci_cmd_is_shell ("/usr/bin/zsh"));
-	ck_assert (cc_oci_cmd_is_shell ("/usr/local/bin/zsh"));
-
-	ck_assert (cc_oci_cmd_is_shell ("ksh"));
-	ck_assert (cc_oci_cmd_is_shell ("/ksh"));
-	ck_assert (cc_oci_cmd_is_shell ("/bin/ksh"));
-	ck_assert (cc_oci_cmd_is_shell ("/usr/bin/ksh"));
-	ck_assert (cc_oci_cmd_is_shell ("/usr/local/bin/ksh"));
-
-	ck_assert (cc_oci_cmd_is_shell ("csh"));
-	ck_assert (cc_oci_cmd_is_shell ("/csh"));
-	ck_assert (cc_oci_cmd_is_shell ("/bin/csh"));
-	ck_assert (cc_oci_cmd_is_shell ("/usr/bin/csh"));
-	ck_assert (cc_oci_cmd_is_shell ("/usr/local/bin/csh"));
-
-	ck_assert (! cc_oci_cmd_is_shell ("true"));
-	ck_assert (! cc_oci_cmd_is_shell ("/true"));
-	ck_assert (! cc_oci_cmd_is_shell ("/bin/true"));
-	ck_assert (! cc_oci_cmd_is_shell ("/usr/bin/true"));
-	ck_assert (! cc_oci_cmd_is_shell ("/usr/local/bin/true"));
-
-} END_TEST
 
 START_TEST(test_cc_run_hook) {
 
@@ -218,7 +176,6 @@ START_TEST(test_cc_run_hook) {
 Suite* make_process_suite(void) {
 	Suite* s = suite_create(__FILE__);
 
-	ADD_TEST(test_cc_oci_cmd_is_shell, s);
 	ADD_TEST(test_cc_run_hook, s);
 
 	return s;
