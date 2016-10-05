@@ -783,7 +783,6 @@ static gboolean
 cc_oci_process_file_parse (struct  cc_oci_process_exec *exec_process)
 {
 	GNode    *root = NULL;
-	GNode    *node = NULL;
 	gboolean  ret = false;
 
 	if(! (exec_process && exec_process->process_json_file)) {

@@ -781,6 +781,48 @@ exit:
 }
 
 /*!
+ * Convert a \ref oci_cfg_process to a JSON
+ * for hyperstart guest agent
+ *
+ * \param config \ref cc_oci_config.
+ *
+ * \return \c true on success, else \c false.
+ *
+ * \return \c JsonArray on success, else \c NULL.
+ */
+static
+JsonObject*
+cc_oci_process_to_hyperstart_json (const struct oci_cfg_process *oci_process)
+{
+	JsonObject *exec_cmd= NULL;
+	JsonObject *process = NULL;
+	JsonArray *args= NULL;
+
+	exec_cmd = json_object_new ();
+	process  = json_object_new ();
+	args     = json_array_new ();
+
+	json_object_set_string_member (exec_cmd, "container", "FIXME");
+	json_object_set_int_member (process, "user", oci_process->user.uid);
+	json_object_set_int_member (process, "group", oci_process->user.uid);
+	json_object_set_string_member (process, "workdir", oci_process->cwd);
+	json_object_set_boolean_member (process, "terminal", oci_process->terminal);
+
+	gchar **arg = oci_process->args;
+	while (*arg != NULL) {
+		json_array_add_string_element (args, *arg);
+		arg++;
+	}
+
+
+	json_object_set_array_member (process, "args", args);
+	json_object_set_object_member (exec_cmd, "process", process);
+
+
+	return exec_cmd;
+}
+
+/*!
  *  Request a command execution to the cc-proxy.
  *
  * \param config \ref cc_oci_config.
@@ -791,18 +833,20 @@ exit:
 gboolean
 cc_oci_send_to_proxy (struct cc_oci_config *config,
 		   struct cc_oci_process_exec *exec_process){
-	gboolean    ret = false;
-	guint       args_len = 0;
+	gboolean   ret = false;
+	JsonObject *exec_cmd_json = NULL;
+	gchar      *exec_cmd_json_str = NULL;
+	gsize      str_len = 0;
 
 	g_assert (config);
 	g_assert (exec_process);
 	g_assert (exec_process->process.args);
+	exec_cmd_json = cc_oci_process_to_hyperstart_json(&exec_process->process);
+	g_debug("convert process to hyper json");
+	exec_cmd_json_str = cc_oci_json_obj_to_string (exec_cmd_json, false, &str_len);
+	g_debug("%s", exec_cmd_json_str);
 
-	args_len = g_strv_length (exec_process->process.args);
 
-	for (int  i = 0; i < args_len; ++i) {
-		g_debug("exec command: %s", exec_process->process.args[i]);
-	}
 #if 0
 	connect to cc-proxy
 	open cc-proxy socket
@@ -813,6 +857,5 @@ cc_oci_send_to_proxy (struct cc_oci_config *config,
 	ret = false;
 #endif
 
-out:
 	return ret;
 }
