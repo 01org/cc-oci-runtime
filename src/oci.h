@@ -101,8 +101,6 @@
 /** Shell to use for \ref CC_OCI_WORKLOAD_FILE. */
 #define CC_OCI_WORKLOAD_SHELL		"/bin/sh"
 
-/** Command to use to allow "exec" to connect to the container. */
-#define CC_OCI_EXEC_CMD               "ssh"
 
 /** File that contains vm spec configuration, used if vm node
  * in CC_OCI_CONFIG_FILE bundle file
@@ -200,6 +198,11 @@ struct oci_cfg_process {
 	gboolean             terminal;
 
 	struct oci_cfg_user  user;
+
+	/* pipes to redirect stdio process*/
+	gchar               *stdin_file;
+	gchar               *stdout_file;
+	gchar               *stderr_file;
 };
 
 /**
@@ -491,6 +494,15 @@ struct cc_oci_config {
 	gboolean detached_mode;
 };
 
+/** cc-specific exec details. */
+struct cc_oci_process_exec {
+	struct oci_cfg_process process;
+	gchar *pid_file;
+	gchar *console;
+	gchar *process_json_file;
+	gboolean detach;
+};
+
 gboolean cc_oci_attach(struct cc_oci_config *config,
 		struct oci_state *state);
 gchar *cc_oci_config_file_path (const gchar *bundle_path);
@@ -511,7 +523,7 @@ gboolean cc_oci_toggle (struct cc_oci_config *config,
 		struct oci_state *state, gboolean pause);
 gboolean cc_oci_exec (struct cc_oci_config *config,
 		struct oci_state *state,
-		int argc, char *const args[]);
+		struct cc_oci_process_exec *exec_process);
 gboolean cc_oci_list (struct cc_oci_config *config,
 		const gchar *format, gboolean show_all);
 gboolean cc_oci_delete (struct cc_oci_config *config,

@@ -48,6 +48,8 @@ extern struct spec_handler root_spec_handler;
 extern struct spec_handler vm_spec_handler;
 extern struct spec_handler linux_spec_handler;
 
+bool
+process_handle_node(GNode *root, struct oci_cfg_process *process);
 gboolean get_spec_vm_from_cfg_file (struct cc_oci_config* config);
 
 #endif /* _CC_OCI_SPEC_HANDLER_H */

@@ -60,58 +60,9 @@
 #include "logging.h"
 #include "netlink.h"
 
-static GMainLoop* main_loop = NULL;
+//static GMainLoop* main_loop = NULL;
 private GMainLoop* hook_loop = NULL;
 
-/** List of shells that are recognised by "exec", ordered by likelihood. */
-static const gchar *recognised_shells[] =
-{
-	"sh",
-	"bash",
-	"zsh",
-	"ksh",
-	"csh",
-
-	/* terminator */
-	NULL,
-};
-
-/*!
- * Determine if \p cmd is a shell.
- *
- * \param cmd Command to check.
- *
- * \return \c true on success, else \c false.
- */
-private gboolean
-cc_oci_cmd_is_shell (const char *cmd)
-{
-	const gchar **shell;
-
-	if (! cmd) {
-		return false;
-	}
-
-	for (shell = (const gchar **)recognised_shells;
-			shell && *shell;
-			shell++) {
-		g_autofree gchar *suffix = NULL;
-
-		if (! g_strcmp0 (*shell, cmd)) {
-			/* exact match */
-			return true;
-		}
-
-		suffix = g_strdup_printf ("/%s", *shell);
-
-		if (g_str_has_suffix (cmd, suffix)) {
-			/* full path to shell was specified */
-			return true;
-		}
-	}
-
-	return false;
-}
 
 /*!
  * Close file descriptors, excluding standard streams.
@@ -830,162 +781,81 @@ exit:
 }
 
 /*!
- * Create a connection to the VM, run a command and disconnect.
+ * Convert a \ref oci_cfg_process to a JSON
+ * for hyperstart guest agent
  *
  * \param config \ref cc_oci_config.
- * \param argc Argument count.
- * \param argv Argument vector.
+ *
+ * \return \c true on success, else \c false.
+ *
+ * \return \c JsonArray on success, else \c NULL.
+ */
+static
+JsonObject*
+cc_oci_process_to_hyperstart_json (const struct oci_cfg_process *oci_process)
+{
+	JsonObject *exec_cmd= NULL;
+	JsonObject *process = NULL;
+	JsonArray *args= NULL;
+
+	exec_cmd = json_object_new ();
+	process  = json_object_new ();
+	args     = json_array_new ();
+
+	json_object_set_string_member (exec_cmd, "container", "FIXME");
+	json_object_set_int_member (process, "user", oci_process->user.uid);
+	json_object_set_int_member (process, "group", oci_process->user.uid);
+	json_object_set_string_member (process, "workdir", oci_process->cwd);
+	json_object_set_boolean_member (process, "terminal", oci_process->terminal);
+
+	gchar **arg = oci_process->args;
+	while (*arg != NULL) {
+		json_array_add_string_element (args, *arg);
+		arg++;
+	}
+
+
+	json_object_set_array_member (process, "args", args);
+	json_object_set_object_member (exec_cmd, "process", process);
+
+
+	return exec_cmd;
+}
+
+/*!
+ *  Request a command execution to the cc-proxy.
+ *
+ * \param config \ref cc_oci_config.
+ * \param exec_process \ref cc_oci_process_exec.
  *
  * \return \c true on success, else \c false.
  */
 gboolean
-cc_oci_vm_connect (struct cc_oci_config *config,
-		int argc,
-		char *const argv[]) {
-	gchar     **args = NULL;
-	gboolean    ret = false;
-	guint       args_len = 0;
-	gboolean    cmd_is_just_shell = false;
-#if 0
-	GError     *err = NULL;
-	GPid        pid;
-	gint        exit_code = -1;
-	GSpawnFlags flags = (G_SPAWN_CHILD_INHERITS_STDIN |
-			     /* XXX: required for g_child_watch_add! */
-			     G_SPAWN_DO_NOT_REAP_CHILD |
-			     G_SPAWN_SEARCH_PATH);
-	guint i;
-#endif
+cc_oci_send_to_proxy (struct cc_oci_config *config,
+		   struct cc_oci_process_exec *exec_process){
+	gboolean   ret = false;
+	JsonObject *exec_cmd_json = NULL;
+	gchar      *exec_cmd_json_str = NULL;
+	gsize      str_len = 0;
 
 	g_assert (config);
-	g_assert (argc);
-	g_assert (argv);
+	g_assert (exec_process);
+	g_assert (exec_process->process.args);
+	exec_cmd_json = cc_oci_process_to_hyperstart_json(&exec_process->process);
+	g_debug("convert process to hyper json");
+	exec_cmd_json_str = cc_oci_json_obj_to_string (exec_cmd_json, false, &str_len);
+	g_debug("%s", exec_cmd_json_str);
 
-	/* Check if the user has specified a shell to run.
-	 *
-	 * FIXME: This is a pragmatic (but potentially unreliable) solution
-	 * FIXME:   if the user wants to run an unknown shell.
-	 */
-	if (cc_oci_cmd_is_shell (argv[0])) {
-		cmd_is_just_shell = true;
-	}
 
-	/* The user wants to run an interactive shell.
-	 * However, this is the default with ssh if no command is
-	 * specified.
-	 *
-	 * If a shell is passed as the 1st arg, ssh gets
-	 * confused as it's expecting to run a non-interactive command,
-	 * so simply remove it to get the behaviour the user wants.
-	 *
-	 * An extra check is performed to ensure that the argument after
-	 * the shell is not an option to ensure that commands like:
-	 * "bash -c ..." still work as expected.
-	 */
-	if (argv[1] && argv[1][0] == '-') {
-		cmd_is_just_shell = false;
-	}
-
-	/* Just a shell, so remove the argument to get the expected
-	 * behavior of an interactive shell.
-	 */
-	if (cmd_is_just_shell) {
-		argc--;
-		argv++;
-	}
-
-	args_len = (guint)argc;
-
-	/* +2 for CC_OCI_EXEC_CMD + hostname to connect to */
-	args_len += 2;
-
-	/* +1 for NULL terminator */
-	args = g_new0 (gchar *, args_len + 1);
-	if (! args) {
-		return false;
-	}
-
-	/* The command to use to connect to the VM */
-	args[0] = g_strdup (CC_OCI_EXEC_CMD);
-	if (! args[0]) {
-		ret = false;
-		goto out;
-	}
-
-	/* connection string to connect to the VM */
-	// FIXME: replace with proper connection string once networking details available.
 #if 0
-	args[1] = g_strdup_printf (ip_address);
-
-	/* append argv to the end of args */
-	if (argc) {
-		for (i = 0; i < args_len; ++i) {
-			args[i+2] = g_strdup (argv[i]);
-		}
-	}
-
-	g_debug ("running command:");
-	for (gchar** p = args; p && *p; p++) {
-		g_debug ("arg: '%s'", *p);
-	}
-
-	/* create a new main loop */
-	main_loop = g_main_loop_new (NULL, 0);
-	if (! main_loop) {
-		g_critical ("cannot create main loop for client");
-		goto out;
-	}
-
-	ret = g_spawn_async_with_pipes (NULL, /* working directory */
-			args,
-			NULL, /* inherit parents environment */
-			flags,
-			(GSpawnChildSetupFunc)cc_oci_close_fds,
-			NULL, /* user_data */
-			&pid,
-			NULL, /* standard_input */
-			NULL, /* standard_output */
-			NULL, /* standard_error */
-			&err);
-
-	if (! ret) {
-		g_critical ("failed to spawn child process (%s): %s",
-				args[0], err->message);
-		g_error_free (err);
-		goto out;
-	}
-
-	g_debug ("child process ('%s') running with pid %u",
-			args[0], (unsigned)pid);
-
-	g_child_watch_add (pid, cc_oci_child_watcher, &exit_code);
-
-	/* wait for child to finish */
-	g_main_loop_run (main_loop);
-
-	g_debug ("child pid %u exited with code %d",
-			(unsigned )pid, (int)exit_code);
-
-	if (exit_code) {
-		/* failed */
-		goto out;
-	}
-
-	ret = true;
+	connect to cc-proxy
+	open cc-proxy socket
+	process_json=convert_to_json(exec_process)
+	send process_json
 #else
 	g_critical ("not implemented yet");
 	ret = false;
 #endif
-
-out:
-	if (args) {
-		g_strfreev (args);
-	}
-
-	if (main_loop) {
-		g_main_loop_unref (main_loop);
-		main_loop = NULL;
-	}
 
 	return ret;
 }
