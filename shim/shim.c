@@ -38,7 +38,7 @@
 /* globals */
 
 /* Pipe used for capturing signal occurence */
-int signal_pipe_fd[2];
+int signal_pipe_fd[2] = { -1, -1 };
 
 static char *program_name;
 
@@ -53,6 +53,9 @@ static char *program_name;
 void add_pollfd(struct pollfd *poll_fds, nfds_t *nfds, int fd,  short events) {
 	struct pollfd pfd = { 0 };
 
+	if ( !poll_fds || !nfds || fd < 0) {
+		return;
+	}
 	assert(*nfds < MAX_POLL_FDS);
 	pfd.fd = fd;
 	pfd.events = events;
@@ -89,6 +92,10 @@ signal_handler(int signal_no)
 bool
 assign_all_signals(struct sigaction *sa)
 {
+	if (! sa) {
+		return false;
+	}
+
         for (int i = 0; shim_signal_table[i]; i++) {
                 if (sigaction(shim_signal_table[i], sa, NULL) == -1) {
 			shim_error("Error assigning signal handler for %d : %s\n",
@@ -135,8 +142,12 @@ char*
 get_proxy_ctl_msg(char *json, size_t *len) {
 	char *proxy_ctl_msg = NULL;
 
-	*len = strlen(json) + 8 + 1;
-	proxy_ctl_msg = malloc(sizeof(char) * *len);
+	if (! (json && len)) {
+		return NULL;
+	}
+
+	*len = strlen(json) + PROXY_CTL_HEADER_SIZE + 1;
+	proxy_ctl_msg = calloc(*len, sizeof(char));
 	if (! proxy_ctl_msg) {
 		abort();
 	}
@@ -160,7 +171,7 @@ send_proxy_hyper_message(int fd, int hyper_cmd_type, char *json) {
 	char      *proxy_payload = NULL;
 	char      *proxy_command_id = "hyper";
 	char      *proxy_ctl_msg = NULL;
-	size_t     len, offset = 0;
+	size_t     len = 0, offset = 0;
 	ssize_t    ret;
 
 	/* cc-proxy has the following format for "hyper" payload:
@@ -172,6 +183,10 @@ send_proxy_hyper_message(int fd, int hyper_cmd_type, char *json) {
 	 *    }
 	 * }
 	*/
+
+	if ( !json || fd < 0) {
+		return;
+	}
 
 	ret = asprintf(&proxy_payload,
 			"{\"id\":\"%s\",\"data\":{\"hyperName\":\"%d\",\"data\":\"%s\"",
@@ -296,7 +311,7 @@ read_IO_message(struct cc_shim *shim, uint64_t *seq, ssize_t *stream_len) {
 	ssize_t need_read = STREAM_HEADER_SIZE;
 	ssize_t bytes_read = 0, want, ret;
 
-	if (!shim) {
+	if (! (shim && seq && stream_len)) {
 		return NULL;
 	}
 
@@ -444,6 +459,10 @@ long long
 parse_numeric_option(char *input) {
 	char       *endptr;
 	long long   num;
+
+	if ( !input) {
+		return -1;
+	}
 
 	errno = 0;
 	num = strtoll(input, &endptr, 10);
