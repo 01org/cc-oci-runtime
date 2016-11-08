@@ -1127,8 +1127,7 @@ cc_oci_start (struct cc_oci_config *config,
 	 *
 	 * Do not wait when console is empty.
 	 */
-	if ((isatty (STDIN_FILENO) && ! config->detached_mode) &&
-	    !config->use_socket_console) {
+	if ((isatty (STDIN_FILENO) && ! config->detached_mode)) {
 		wait = true;
 	}
 
@@ -1804,8 +1803,6 @@ cc_oci_config_update (struct cc_oci_config *config,
 		config->console = state->console;
 		state->console = NULL;
 	}
-
-	config->use_socket_console = state->use_socket_console;
 
 	if (state->vm) {
 		config->vm = state->vm;
