@@ -292,11 +292,11 @@ handle_stdin(struct cc_shim *shim)
 	while ((nread = read(STDIN_FILENO, buf, BUFSIZ-12)) != -1) {
 		set_big_endian_64 ((uint8_t*)wbuf, shim->io_seq_no);
 		len = nread + STREAM_HEADER_SIZE;
-		set_big_endian_32 ((uint8_t*)wbuf, (uint32_t)len);
-		strncpy(wbuf, buf, (size_t)nread);
+		set_big_endian_32 ((uint8_t*)wbuf+STREAM_HEADER_LENGTH_OFFSET, (uint32_t)len);
+		strncpy(wbuf+STREAM_HEADER_SIZE, buf, (size_t)nread);
 
 		// TODO: handle write in the poll loop to account for write blocking
-		ret = (int)write(shim->proxy_io_fd, wbuf, (size_t)nread);
+		ret = (int)write(shim->proxy_io_fd, wbuf, (size_t)len);
 		if (ret == -1) {
 			shim_warning("Error writing from fd %d to fd %d: %s\n",
 				STDIN_FILENO, shim->proxy_io_fd, strerror(errno));
