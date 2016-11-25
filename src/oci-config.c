@@ -128,6 +128,13 @@ cc_oci_config_create (void)
 		return NULL;
 	}
 
+	config->pod = g_malloc0 (sizeof (struct cc_pod));
+	if (! config->pod) {
+		g_free (config->proxy);
+		g_free (config);
+		return NULL;
+	}
+
 	return config;
 }
 
@@ -153,6 +160,12 @@ cc_oci_config_free (struct cc_oci_config *config)
 	if (config->vm) {
 		g_free_if_set (config->vm->kernel_params);
 		g_free (config->vm);
+	}
+
+	if (config->pod) {
+		g_free_if_set (config->pod->sandbox_id);
+		g_free_if_set (config->pod->sandbox_name);
+		g_free (config->pod);
 	}
 
 	if (config->oci.process.args) {
