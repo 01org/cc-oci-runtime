@@ -57,6 +57,7 @@
 #include "spec_handler.h"
 #include "command.h"
 #include "proxy.h"
+#include "pod.h"
 
 extern struct start_data start_data;
 
@@ -885,7 +886,7 @@ cc_oci_start (struct cc_oci_config *config,
 	 *
 	 * Do not wait when console is empty.
 	 */
-	if ((isatty (STDIN_FILENO) && ! config->detached_mode)) {
+	if ((isatty (STDIN_FILENO) && ! config->detached_mode && ! config->pod)) {
 		wait = true;
 	}
 
@@ -922,7 +923,8 @@ cc_oci_start (struct cc_oci_config *config,
 		}
 	}
 
-	if (! cc_proxy_hyper_new_container (config)) {
+	if (((! config->pod) || (config->pod && ! config->pod->sandbox)) &&
+	    (! cc_proxy_hyper_new_container (config))) {
 	    ret = false;
 	    goto out;
 	}
@@ -1588,6 +1590,12 @@ cc_oci_config_update (struct cc_oci_config *config,
 		cc_proxy_free (config->proxy);
 		config->proxy = state->proxy;
 		state->proxy = NULL;
+	}
+
+	if (state->pod) {
+		cc_pod_free (config->pod);
+		config->pod = state->pod;
+		state->pod = NULL;
 	}
 
 	if (state->procsock_path) {
