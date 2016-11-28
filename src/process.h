@@ -29,4 +29,11 @@ gboolean cc_run_hooks(GSList* hooks, const gchar* state_file_path,
 gboolean cc_oci_vm_connect (struct cc_oci_config *config,
 		int argc, char *const argv[]);
 
+gboolean cc_shim_launch (struct cc_oci_config *config,
+			int *child_err_fd,
+			int *shim_args_fd,
+			int *shim_socket_fd);
+
+GSocketConnection *cc_oci_socket_connection_from_fd (int fd);
+
 #endif /* _CC_OCI_PROCESS_H */
