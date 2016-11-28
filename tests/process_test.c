@@ -42,7 +42,7 @@ gboolean cc_run_hook (struct oci_cfg_hook* hook,
 gboolean cc_oci_setup_shim (struct cc_oci_config *config,
 		int proxy_fd,
 		int proxy_io_fd);
-GSocketConnection *socket_connection_from_fd (int fd);
+GSocketConnection *cc_oci_socket_connection_from_fd (int fd);
 gboolean cc_oci_setup_child (struct cc_oci_config *config);
 gboolean cc_oci_vm_netcfg_get (struct cc_oci_config *config,
 		struct netlink_handle *hndl);
@@ -267,13 +267,13 @@ START_TEST(test_cc_oci_setup_shim) {
 START_TEST(test_socket_connection_from_fd) {
 	int sockets[2] = { -1, -1 };
 	GSocketConnection *conn = NULL;
-	ck_assert (! socket_connection_from_fd (-1));
-	ck_assert (! socket_connection_from_fd (STDIN_FILENO));
+	ck_assert (! cc_oci_socket_connection_from_fd (-1));
+	ck_assert (! cc_oci_socket_connection_from_fd (STDIN_FILENO));
 
 	ck_assert (socketpair(PF_UNIX, SOCK_STREAM, 0, sockets) == 0);
 	close (sockets[0]);
 
-	conn = socket_connection_from_fd (sockets[1]);
+	conn = cc_oci_socket_connection_from_fd (sockets[1]);
 	ck_assert (conn);
 	g_object_unref (conn);
 	close(sockets[1]);
