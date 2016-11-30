@@ -42,6 +42,9 @@
 #include <linux/sched.h>
 
 #include <glib.h>
+#include <gio/gio.h>
+#include <json-glib/json-glib.h>
+
 
 #ifndef CLONE_NEWCGROUP
 #define CLONE_NEWCGROUP 0x02000000
@@ -74,7 +77,31 @@
 
 /** Directory below which container-specific directory will be created.
  */
-#define CC_OCI_RUNTIME_DIR_PREFIX	"/run/cc-oci-runtime"
+#define CC_OCI_RUNTIME_DIR_PREFIX	LOCALSTATEDIR \
+					"/run/cc-oci-runtime"
+
+/** Command used to talk to hyperstart inside the VM. */
+#define CC_OCI_PROXY			"cc-proxy"
+
+/** Command used to _represent_ the workload.
+ *
+ *  containerd expects to be given a PID for the workload process, but
+ *  with Clear Containers, the process actually runs inside the
+ *  hypervisor. The shim therefore embodies the workload outside of the
+ *  VM whilst the real workload process runs inside the VM.
+ *
+ *  The shim represents the workload process, with the help of
+ *  CC_OCI_PROXY:
+ *
+ *  - Handles I/O from the real workload process (via the proxy).
+ *  - Reacts to signals.
+ *  - Exits with return code of real workload process.
+ */
+#define CC_OCI_SHIM 			"cc-shim"
+
+/** Full path to socket used to talk to \ref CC_OCI_PROXY. */
+#define CC_OCI_PROXY_SOCKET 		CC_OCI_RUNTIME_DIR_PREFIX \
+					"/proxy.sock"
 
 /** Mode for \ref CC_OCI_WORKLOAD_FILE. */
 #define CC_OCI_SCRIPT_MODE		0755
@@ -87,11 +114,6 @@
 
 /** Architecture we expect \ref CC_OCI_CONFIG_FILE to specify. */
 #define CC_OCI_EXPECTED_ARCHITECTURE	"amd64"
-
-/** File that will be executed automatically on VM boot by
- * container-workload.service.
- */
-#define CC_OCI_WORKLOAD_FILE		"/.containerexec"
 
 /** Name of file containing environment variables that will be set
  * inside the VM.
@@ -114,6 +136,16 @@
 
 /* Path to the stateless passwd file. */ 
 #define STATELESS_PASSWD_PATH "/usr/share/defaults/etc/passwd"
+
+/* Offset to add to the interface index for assigning the pci slot.
+ * First 3 slots are in use for pc-lite machine type
+ * Currently,
+ * PCI: slot 0 function 0 => in use by pci-lite-device
+ * PCI: slot 1 function 1 => in use by PM_LITE
+ * PCI: slot 2 function 0 => in use by virtio-9p-pci
+ * PCI: slot 3 function 0 => in use by virtio-serial-pci
+ */
+#define PCI_OFFSET 8
 
 /** Status of an OCI container. */
 enum oci_status {
@@ -200,6 +232,10 @@ struct oci_cfg_process {
 	gboolean             terminal;
 
 	struct oci_cfg_user  user;
+
+	/** Stream IO ids allocated by \c cc_proxy_allocate_io */
+	gint                 stdio_stream;
+	gint                 stderr_stream;
 };
 
 /**
@@ -264,6 +300,9 @@ struct cc_oci_vm_cfg {
 
 	/** Kernel parameters (optional). */
 	gchar *kernel_params;
+
+	/** PID of hypervisor. */
+	GPid pid;
 };
 
 /** cc-specific network configuration data. */
@@ -380,10 +419,12 @@ struct oci_state {
 	/* See member of same name in \ref cc_oci_config. */
 	gchar           *console;
 
-	/* See member of same name in \ref cc_oci_config. */
-	gboolean         use_socket_console;
-
 	struct cc_oci_vm_cfg *vm;
+	struct cc_proxy      *proxy;
+	struct cc_pod        *pod;
+
+	/* Needed by start to create a new container workload  */
+	struct oci_cfg_process *process;
 };
 
 /** clr-specific state fields. */
@@ -410,7 +451,12 @@ struct cc_oci_container_state {
 	 */
 	gchar procsock_path[PATH_MAX];
 
-	/* Process ID of hypervisor. */
+	/** Process ID of of the OCI workload (in fact the PID
+	 * of CC_OCI_SHIM).
+	 *
+	 * \note it is not called shim_pid, to remind us of its
+	 * function.
+	 */
 	GPid workload_pid;
 
 	/** OCI status of container. */
@@ -440,6 +486,48 @@ struct cc_oci_mount {
 	gchar          *directory_created;
 };
 
+/**
+ * Representation of a connect to \ref CC_OCI_PROXY.
+ */
+struct cc_proxy {
+	/** Socket connection used to communicate with \ref
+	 * CC_OCI_PROXY.
+	 */
+	GSocket *socket;
+
+	/** Full path to socket used to send control messages
+	 * to the agent running in the VM.
+	 */
+	gchar *agent_ctl_socket;
+
+	/** Full path to socket used to transfer I/O
+	 * to/from the agent running in the VM.
+	 */
+	gchar *agent_tty_socket;
+};
+
+/**
+ * Tracks the relationship between a container and
+ * a pod: Is this container part of a Pod ? Is it
+ * a sandbox ? What is the sandbox ID this container
+ * belongs to ?
+ */
+struct cc_pod {
+	/** If \c true, this is a sandbox container. */
+	gboolean sandbox;
+
+	/**
+	 * The sandbox ID: If this is a sandbox container,
+	 * then this is the container's own ID. Otherwise,
+	 * this is the ID of the sandbox the container
+	 * belongs to.
+	 */
+	gchar    *sandbox_id;
+
+	/** Human readable sandbox name. */
+	gchar    *sandbox_name;
+};
+
 /** The main object holding all configuration data.
  *
  * \note The main user of this object is "start" - other commands
@@ -462,6 +550,9 @@ struct cc_oci_config {
 	/** Container-specific state. */
 	struct cc_oci_container_state  state;
 
+	/** Pod-specific configuration. */
+	struct cc_pod                  *pod;
+
 	/** Path to directory containing OCI bundle to run. */
 	gchar *bundle_path;
 
@@ -470,11 +561,6 @@ struct cc_oci_config {
 
 	/** Path to device to use for I/O. */
 	gchar *console;
-
-	/** If \c true, \ref console will be a socket rather than a pty
-	 * device.
-	 */
-	gboolean use_socket_console;
 
 	/** If set, use an alternative root directory to the default
 	 * CC_OCI_RUNTIME_DIR_PREFIX.
@@ -489,6 +575,8 @@ struct cc_oci_config {
 
 	/** If \c true, don't wait for hypervisor process to finish. */
 	gboolean detached_mode;
+
+	struct cc_proxy *proxy;
 };
 
 gboolean cc_oci_attach(struct cc_oci_config *config,
@@ -524,4 +612,8 @@ gboolean cc_oci_config_update (struct cc_oci_config *config,
 gboolean
 cc_oci_create_container_networking_workload (struct cc_oci_config *config);
 
+JsonObject *
+cc_oci_process_to_json(const struct oci_cfg_process *process);
+
+void set_env_home(struct cc_oci_config *config);
 #endif /* _CC_OCI_H */

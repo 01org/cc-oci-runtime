@@ -26,6 +26,7 @@
 
 #include "test_common.h"
 #include "../src/util.h"
+#include "../src/oci-config.h"
 #include "json.h"
 
 #include "../src/command.h"
@@ -114,13 +115,16 @@ void test_spec_handler(struct spec_handler* handler, struct spec_handler_test* t
 	GNode* node;
 	GNode* handler_node;
 	GNode test_node;
-	struct cc_oci_config config;
+	struct cc_oci_config *config = NULL;
 	struct spec_handler_test* test;
 	int fd;
 
+	config = cc_oci_config_create ();
+	ck_assert (config);
+
 	ck_assert(! handler->handle_section(NULL, NULL));
 	ck_assert(! handler->handle_section(&test_node, NULL));
-	ck_assert(! handler->handle_section(NULL, &config));
+	ck_assert(! handler->handle_section(NULL, config));
 
 	/**
 	 * Create fake files for Kernel and image so
@@ -147,14 +151,18 @@ void test_spec_handler(struct spec_handler* handler, struct spec_handler_test* t
 		close(fd);
 	}
 
+	cc_oci_config_free(config);
+
 	for (test=tests; test->file; test++) {
-		memset(&config, 0, sizeof(config));
+		config = cc_oci_config_create ();
+		ck_assert (config);
+
 		cc_oci_json_parse(&node, test->file);
 		handler_node = node_find_child(node, handler->name);
 		ck_assert_msg(handler->handle_section(
-		    handler_node, &config) == test->test_result,
+		    handler_node, config) == test->test_result,
 		    test->file);
-		cc_oci_config_free(&config);
+		cc_oci_config_free(config);
 		g_free_node(node);
 	}
 
@@ -186,10 +194,12 @@ test_helper_create_state_file (const char *name,
 		struct cc_oci_config *config)
 {
 	g_autofree gchar *timestamp = NULL;
+	struct cc_proxy *proxy = NULL;
 
 	assert (name);
 	assert (root_dir);
 	assert (config);
+	assert (config->proxy);
 
 	timestamp = g_strdup_printf ("timestamp for %s", name);
 	assert (timestamp);
@@ -216,15 +226,31 @@ test_helper_create_state_file (const char *name,
 		  sizeof (config->state.procsock_path));
 
 	if (! cc_oci_runtime_dir_setup (config)) {
-		fprintf (stderr, "ERROR: failed to setup runtime dir "
-				"for vm %s", name);
+		fprintf (stderr, "ERROR: failed to setup "
+				"runtime dir for vm %s\n", name);
 		return false;
 	}
+
+	/* config->process not set */
+	if (cc_oci_state_file_create (config, timestamp)) {
+		fprintf (stderr, "ERROR: cc_oci_state_file_create "
+				"worked unexpectedly for vm %s (no config->process)\n", name);
+		return false;
+	}
+
+	if (snprintf(config->oci.process.cwd, sizeof(config->oci.process.cwd),
+				"%s", "/working_directory") < 0) {
+		fprintf (stderr, "ERROR: cc_oci_state_file_create "
+				"failed to copy process cwd for vm %s\n", name);
+	}
+
+	config->oci.process.args = g_strsplit("/bin/echo test", " ", -1);
 
 	/* config->vm not set */
 	if (cc_oci_state_file_create (config, timestamp)) {
 		fprintf (stderr, "ERROR: cc_oci_state_file_create "
-				"worked unexpectedly for vm %s", name);
+				"worked unexpectedly for vm %s "
+				"(no config->vm)\n", name);
 		return false;
 	}
 
@@ -245,14 +271,27 @@ test_helper_create_state_file (const char *name,
 
 	config->vm->kernel_params = g_strdup_printf ("kernel params for %s", name);
 
-	/* config->vm now set */
+	proxy = config->proxy;
+
+	proxy->socket = g_socket_new (G_SOCKET_FAMILY_UNIX,
+			G_SOCKET_TYPE_STREAM,
+			G_SOCKET_PROTOCOL_DEFAULT,
+			NULL);
+	ck_assert (proxy->socket);
+
+	proxy->agent_ctl_socket = g_strdup ("agent-ctl-socket");
+	proxy->agent_tty_socket = g_strdup ("agent-tty-socket");
+
+	/* set pid to ourselves so we know it's running */
+	config->vm->pid = getpid ();
+
+	/* config->vm and config->proxy now set */
 	if (! cc_oci_state_file_create (config, timestamp)) {
 		fprintf (stderr, "ERROR: cc_oci_state_file_create "
-				"failed unexpectedly");
+				"failed unexpectedly\n");
 		return false;
 
 	}
 
 	return true;
 }
-
