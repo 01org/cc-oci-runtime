@@ -159,7 +159,7 @@ cc_oci_get_workload_dir (struct cc_oci_config *config)
 		return NULL;
 	}
 
-	if (config->pod && config->pod->sandbox) {
+	if (config->pod) {
 		return config->pod->sandbox_workloads;
 	}
 

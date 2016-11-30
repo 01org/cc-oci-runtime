@@ -1203,7 +1203,7 @@ out:
 gboolean
 cc_proxy_run_hyper_new_container (struct cc_oci_config *config,
 				  const char *container_id,
-				  char *rootfs)
+				  const char *rootfs, const char *image)
 {
 	JsonObject *newcontainer_payload= NULL;
 	JsonObject *process = NULL;
@@ -1250,7 +1250,7 @@ cc_proxy_run_hyper_new_container (struct cc_oci_config *config,
 				container_id);
 	json_object_set_string_member (newcontainer_payload, "rootfs", rootfs);
 
-	json_object_set_string_member (newcontainer_payload, "image", "");
+	json_object_set_string_member (newcontainer_payload, "image", image);
 	/*json_object_set_string_member (newcontainer_payload, "image",
 	  config->optarg_container_id);
 	  */
@@ -1344,7 +1344,7 @@ cc_proxy_hyper_new_container (struct cc_oci_config *config)
 	}
 
 	if (! cc_proxy_run_hyper_new_container (config,
-						config->optarg_container_id, "")) {
+						config->optarg_container_id, "", "")) {
 		goto out;
 	}
 
