@@ -418,6 +418,9 @@ cc_run_hook(struct oci_cfg_hook* hook, const gchar* state,
 	if (write(std_in, container_state, state_length) < 0) {
 		g_critical ("failed to send container state to hook: %s",
 				strerror (errno));
+		if (errno == EPIPE) {
+			result = true;
+		}
 		goto exit;
 	}
 
@@ -425,6 +428,9 @@ cc_run_hook(struct oci_cfg_hook* hook, const gchar* state,
 	if (write(std_in, "\n", 1) < 0) {
 		g_critical ("failed to commit container state: %s",
 				strerror (errno));
+		if (errno == EPIPE) {
+			result = true;
+		}
 		goto exit;
 	}
 
@@ -791,10 +797,28 @@ cc_run_hooks(GSList* hooks, const gchar* state_file_path,
 	gsize length = 0;
 	GError* error = NULL;
 	gboolean result = false;
+	struct sigaction old_act = { {0} };
+	struct sigaction new_act = { {0} };
+
+	new_act.sa_handler = SIG_IGN;
+	sigemptyset (&new_act.sa_mask);
+	new_act.sa_flags = 0;
 
 	/* no hooks */
 	if ((!hooks) || g_slist_length(hooks) == 0) {
 		return true;
+	}
+
+	/* Disable SIGPIPE whilst running the hooks to avoid a race were
+	 * a hook that does not expect to read from stdin runs and exits
+	 * before cc_run_hook() has a chance to pass the state to the
+	 * hook process (which will generate SIGPIPE if the process has
+	 * exited).
+	 */
+	if (sigaction (SIGPIPE, &new_act, &old_act) < 0) {
+		g_critical ("failed to ignore SIGPIPE: %s",
+				strerror (errno));
+		return false;
 	}
 
 	/* create a new main loop */
@@ -826,6 +850,13 @@ cc_run_hooks(GSList* hooks, const gchar* state_file_path,
 	result = true;
 
 exit:
+	/* undo signal handling */
+	if (sigaction (SIGPIPE, &old_act, NULL) < 0) {
+		g_critical ("failed to restore SIGPIPE handler: %s",
+				strerror (errno));
+		result = false;
+	}
+
 	g_free_if_set(container_state);
 	g_main_loop_unref(hook_loop);
 	hook_loop = NULL;
