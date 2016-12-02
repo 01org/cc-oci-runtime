@@ -1328,14 +1328,16 @@ cc_proxy_run_hyper_new_container (struct cc_oci_config *config,
 
 /**
  * Request \ref CC_OCI_PROXY to start a new container
- * using intial worload from \ref cc_oci_config
+ * within a pod, using intial worload from \ref cc_oci_config
  *
  * \param config
  *
  * \return \c true on success, else \c false.
  */
 gboolean
-cc_proxy_hyper_new_container (struct cc_oci_config *config)
+cc_proxy_hyper_new_pod_container(struct cc_oci_config *config,
+				 const char *container_id, const char *pod_id,
+				 const char *rootfs, const char *image)
 {
 	gboolean ret = false;
 
@@ -1346,7 +1348,7 @@ cc_proxy_hyper_new_container (struct cc_oci_config *config)
 	if (! cc_proxy_connect (config->proxy)) {
 		goto out;
 	}
-	if (! cc_proxy_attach (config->proxy, config->optarg_container_id)) {
+	if (! cc_proxy_attach (config->proxy, pod_id)) {
 		goto out;
 	}
 
@@ -1357,7 +1359,8 @@ cc_proxy_hyper_new_container (struct cc_oci_config *config)
 	}
 
 	if (! cc_proxy_run_hyper_new_container (config,
-						config->optarg_container_id, "", "")) {
+						container_id,
+						rootfs, image)) {
 		goto out;
 	}
 
@@ -1368,6 +1371,23 @@ out:
 	}
 
 	return ret;
+}
+/**
+ * Request \ref CC_OCI_PROXY to start a new standalone
+ * container (e.g. a Docker one) using intial worload
+ * from \ref cc_oci_config.
+ *
+ * \param config
+ *
+ * \return \c true on success, else \c false.
+ */
+gboolean
+cc_proxy_hyper_new_container (struct cc_oci_config *config)
+{
+	return cc_proxy_hyper_new_pod_container(config,
+						config->optarg_container_id,
+						config->optarg_container_id,
+						"", "");
 }
 
 /**
