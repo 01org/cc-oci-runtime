@@ -215,7 +215,7 @@ START_TEST(test_cc_oci_setup_shim) {
 
 	config.oci.process.terminal = true;
 	config.console = g_strdup("/dev/ptmx");
-	ck_assert (! cc_oci_setup_shim (&config, tmpf1_fd, tmpf2_fd));
+	ck_assert (cc_oci_setup_shim (&config, tmpf1_fd, tmpf2_fd));
 
 	g_free (config.console);
 	cc_oci_rm_rf (tmpf1);

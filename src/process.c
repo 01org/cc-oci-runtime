@@ -182,8 +182,21 @@ cc_oci_setup_shim (struct cc_oci_config *config,
 	/* become session leader */
 	setsid ();
 
-	// In the console case, the terminal needs to be dup'ed to stdio
-	if (config->oci.process.terminal) {
+	/* In the console case, the terminal needs to be dup'ed to stdio
+	 * and the tty provided by docker is set as the controlling tty 
+	 * for the shim.
+	 *
+	 * For running standalone, we currently pass the current $(tty).
+	 * In that case, stdio is set up correctly. Do not set the tty as
+	 * the controlling tty for shim, since this makes the shell run with no
+	 * controlling tty resulting in the following error:
+	 * 	"sudo: no tty present and no askpass program specified"
+	 * But this results in SIGWINCH signals NOT being delivered to shim in
+	 * standalone mode.
+	 * TODO: Create a tty in standalone mode and pass the slave pts to the shim
+	 * copying data from slave=>master=>current tty.
+	 */
+	if ( !isatty(STDIN_FILENO) && config->oci.process.terminal) {
 		tty_fd = open(config->console, O_RDWR |  O_NOCTTY);
 
 		if (tty_fd == -1) {
