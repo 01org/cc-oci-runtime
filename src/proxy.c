@@ -18,6 +18,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
+#include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include <sys/stat.h>
@@ -238,86 +239,113 @@ cc_proxy_msg_read (GIOChannel *source, GIOCondition condition,
 	struct proxy_msg p_msg = { 0 };
 	gchar iov_buffer[LINE_MAX] = { 0 };
 	ssize_t bytes_read;
-	gboolean fd_read = false;
 	struct msghdr msg = { 0 };
 	struct cmsghdr *cmsg = NULL;
 	struct iovec io = { .iov_base = iov_buffer,
 	                    .iov_len = sizeof(iov_buffer) };
-	char ctl_buffer[LINE_MAX] = { 0 };
+	char ctl_buffer[CMSG_SPACE(sizeof(int))] = { 0 };
 	unsigned char *data;
 	/* length + reserved */
 	const size_t data_offset = sizeof(p_msg.length) + sizeof(p_msg.reserved);
 	guint8 buf_len[sizeof(p_msg.length)] = { 0 };
-	size_t bytes_to_copy = 0;
+	unsigned char *frame = NULL;
+	unsigned char *tmp_ptr;
+	int timeout;
+	size_t tot_b_rd = 0;
+	size_t tot_b_expected;
+	ssize_t b_to_cpy;
 
 	msg.msg_iov = &io;
 	msg.msg_iovlen = 1;
 	msg.msg_control = ctl_buffer;
 	msg.msg_controllen = sizeof(ctl_buffer);
 
-	/* read length */
-	bytes_read = recvmsg(proxy_data->socket_fd, &msg, 0);
-
-	if (bytes_read == -1){
-		g_critical("failed to read proxy message %s", strerror(errno));
-		return false;
-	}
-
-	if (bytes_read == 0) {
-		g_critical("failed to read lenght");
-		return false;
-	}
-
-	if (proxy_data->oob_fd) {
-		/* check if oob data was received */
-		cmsg = CMSG_FIRSTHDR(&msg);
-		if (cmsg) {
-			data = CMSG_DATA(cmsg);
-			if (data) {
-				*proxy_data->oob_fd = *((int*) data);
-				g_message("oob fd read from proxy socket %d",
-					*proxy_data->oob_fd);
-				fd_read = true;
-			}
-		}
-	}
-
-	/* only out-of-band data was received */
-	if (bytes_read < sizeof (buf_len) || iov_buffer[0] == 'F' ) {
-		goto out1;
-	}
-
-	/* cc-proxy sends a fd as out-of-band data
-	 * followed by an 'F'.
-	 * *DO NOT* copy these bytes to msg_received
+	/* 
+	 * This sleep is very important to make sure we don't
+	 * get MSG_CTRUNC message from msghdr. There is no way
+	 * to recover from a MSG_CTRUNC the control message lost.
 	 */
-	memcpy (buf_len, iov_buffer, sizeof (buf_len));
-	p_msg.length = cc_oci_get_big_endian_32 (buf_len);
-	g_debug ("msg length: %d", p_msg.length);
-
-	/* ensure DO NOT copy extra bytes */
-	bytes_to_copy = MIN ((size_t)bytes_read-data_offset, (size_t)p_msg.length);
-	g_string_append_len (proxy_data->msg_received,
-		iov_buffer+data_offset, (ssize_t)bytes_to_copy);
-
-	/* all message was read */
-	if (bytes_read >= p_msg.length+data_offset) {
-		goto out2;
+	if (proxy_data->oob_fd) {
+		usleep(1e3);
 	}
 
-	/* read missing bytes */
-	while(true) {
-		bytes_read = recvmsg(proxy_data->socket_fd, &msg, 0);
-		if (bytes_read < 0) {
-			/* no more data to read */
+	/* read at least message length */
+	for (timeout = 0; timeout < 100; timeout++) {
+		if (tot_b_rd >= sizeof(buf_len)) {
 			break;
 		}
-		if (! proxy_data->oob_fd) {
-			/* this message has not out-of-band data */
+
+		bytes_read = recvmsg(proxy_data->socket_fd, &msg, 0);
+		if (bytes_read < 1) {
+			usleep(1e3);
 			continue;
 		}
 
-		/* check if oob data was received */
+		tmp_ptr = realloc(frame, tot_b_rd + (size_t)bytes_read);
+		if (!tmp_ptr) {
+			g_critical("failed to realloc memory");
+			goto out;
+		}
+		frame = tmp_ptr;
+		memcpy(frame + tot_b_rd, iov_buffer, (size_t)bytes_read);
+		tot_b_rd += (size_t)bytes_read;
+	}
+
+	if (tot_b_rd < sizeof(buf_len)) {
+		g_critical("failed to get message length, only %ld bytes read", tot_b_rd);
+		goto out;
+	}
+
+	/* compute message length */
+	memcpy (buf_len, frame, sizeof(buf_len));
+	p_msg.length = cc_oci_get_big_endian_32(buf_len);
+	g_debug("msg length: %d", p_msg.length);
+
+	tot_b_expected = p_msg.length + data_offset;
+	if (proxy_data->oob_fd) {
+		tot_b_expected += 1;
+	}
+
+	/* read remaining bytes */
+	for (timeout = 0; timeout < 100; timeout++) {
+		if (tot_b_rd >= tot_b_expected) {
+			break;
+		}
+
+		bytes_read = recvmsg(proxy_data->socket_fd, &msg, 0);
+		if (bytes_read < 1) {
+			usleep(1e3);
+			continue;
+		}
+
+		tmp_ptr = realloc(frame, tot_b_rd + (size_t)bytes_read);
+		if (!tmp_ptr) {
+			g_critical("failed to realloc memory");
+			goto out;
+		}
+		frame = tmp_ptr;
+		memcpy(frame + tot_b_rd, iov_buffer, (size_t)bytes_read);
+		tot_b_rd += (size_t)bytes_read;
+	}
+
+	if (tot_b_rd < tot_b_expected) {
+		g_critical("failed to get entire frame, only %lu bytes read out of %lu",
+			tot_b_rd, tot_b_expected);
+		goto out;
+	}
+
+	b_to_cpy = (ssize_t)(tot_b_expected - data_offset);
+	if (proxy_data->oob_fd) {
+		b_to_cpy -= 1;
+	}
+
+	/* get out-of-band file descriptor */
+	if (proxy_data->oob_fd) {
+		if (frame[tot_b_expected - 1] != 'F') {
+			g_critical("failed to retrieve oob_fd, no \"F\" received");
+			goto out;
+		}
+
 		cmsg = CMSG_FIRSTHDR(&msg);
 		if (cmsg) {
 			data = CMSG_DATA(cmsg);
@@ -325,26 +353,17 @@ cc_proxy_msg_read (GIOChannel *source, GIOCondition condition,
 				*proxy_data->oob_fd = *((int*) data);
 				g_message("oob fd read from proxy socket %d",
 					*proxy_data->oob_fd);
-				fd_read = true;
 			}
 		}
-		g_string_append_len(proxy_data->msg_received,
-			iov_buffer, bytes_read);
-	}
+	} 
 
-out2:
-	if (proxy_data->msg_received->len > 0) {
-		g_debug("message read from proxy socket: %s",
-			proxy_data->msg_received->str);
-	}
-out1:
-	if (proxy_data->oob_fd && !fd_read) {
-		g_debug("waiting for oob fd");
-		return true;
-	}
+	g_string_append_len(proxy_data->msg_received, (const gchar *) frame + data_offset, b_to_cpy);
 
+	g_debug("message read from proxy socket: %s", proxy_data->msg_received->str);
+
+out:
+	free(frame);
 	g_main_loop_quit (proxy_data->loop);
-
 	/* unregister this watcher */
 	return false;
 }
