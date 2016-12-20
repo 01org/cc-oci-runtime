@@ -51,6 +51,7 @@ setup() {
 }
 
 @test "stdout forwarded using exec" {
+	skip "test fails randomly, see issue: https://github.com/01org/cc-oci-runtime/issues/527"
 	$DOCKER_EXE run --name containertest -d ubuntu bash -c "sleep 30"
 	$DOCKER_EXE exec -ti containertest ls /etc/resolv.conf 2>/dev/null | grep "/etc/resolv.conf" 
 }
