@@ -26,6 +26,7 @@
 #include "oci.h"
 #include "json.h"
 #include "common.h"
+#include "pod.h"
 #include "proxy.h"
 #include "util.h"
 #include "networking.h"
@@ -1241,39 +1242,15 @@ out:
 	return ret;
 }
 
-/**
- * Request \ref CC_OCI_PROXY to start a new container
- * using intial worload from \ref cc_oci_config
- *
- * \param config
- *
- * \return \c true on success, else \c false.
- */
 gboolean
-cc_proxy_hyper_new_container (struct cc_oci_config *config)
+cc_proxy_run_hyper_new_container (struct cc_oci_config *config,
+				  const char *container_id,
+				  const char *rootfs, const char *image)
 {
 	JsonObject *newcontainer_payload= NULL;
 	JsonObject *process = NULL;
 	JsonArray *args= NULL;
 	JsonArray *envs= NULL;
-	gboolean ret = false;
-
-	if (! (config && config->proxy)) {
-		goto out;
-	}
-
-	if (! cc_proxy_connect (config->proxy)) {
-		goto out;
-	}
-	if (! cc_proxy_attach (config->proxy, config->optarg_container_id)) {
-		goto out;
-	}
-
-	if (config->oci.process.stdio_stream < 0  ||
-			config->oci.process.stderr_stream < 0 ) {
-		g_critical("invalid io stream number");
-		goto out;
-	}
 
 	/* json stanza for NEWCONTAINER*/
 	/*
@@ -1302,19 +1279,20 @@ cc_proxy_hyper_new_container (struct cc_oci_config *config)
 	   }
 	 * */
 
+	if (! config) {
+		return false;
+	}
+
 	newcontainer_payload = json_object_new ();
 	process  = json_object_new ();
 	args     = json_array_new ();
 	envs     = json_array_new ();
 
 	json_object_set_string_member (newcontainer_payload, "id",
-			config->optarg_container_id);
-	/*
-	 * FIXME ADD rootfs
-	 */
-	json_object_set_string_member (newcontainer_payload, "rootfs", "");
+				container_id);
+	json_object_set_string_member (newcontainer_payload, "rootfs", rootfs);
 
-	json_object_set_string_member (newcontainer_payload, "image", "");
+	json_object_set_string_member (newcontainer_payload, "image", image);
 	/*json_object_set_string_member (newcontainer_payload, "image",
 	  config->optarg_container_id);
 	  */
@@ -1341,7 +1319,8 @@ cc_proxy_hyper_new_container (struct cc_oci_config *config)
 		char *e = g_strstr_len (var, -1, "=");
 		if (! e ){
 			g_critical("failed to split enviroment variable value");
-			goto out;
+			json_object_unref (newcontainer_payload);
+			return false;
 		}
 		*e = '\0';
 		e++;
@@ -1369,20 +1348,75 @@ cc_proxy_hyper_new_container (struct cc_oci_config *config)
 	if (! cc_proxy_run_hyper_cmd (config, "newcontainer",
 				newcontainer_payload)) {
 		g_critical("failed to run new container");
+		json_object_unref (newcontainer_payload);
+		return false;
+	}
+
+	return true;
+}
+
+/**
+ * Request \ref CC_OCI_PROXY to start a new container
+ * within a pod, using intial worload from \ref cc_oci_config
+ *
+ * \param config
+ *
+ * \return \c true on success, else \c false.
+ */
+gboolean
+cc_proxy_hyper_new_pod_container(struct cc_oci_config *config,
+				 const char *container_id, const char *pod_id,
+				 const char *rootfs, const char *image)
+{
+	gboolean ret = false;
+
+	if (! (config && config->proxy)) {
+		goto out;
+	}
+
+	if (! cc_proxy_connect (config->proxy)) {
+		goto out;
+	}
+	if (! cc_proxy_attach (config->proxy, pod_id)) {
+		goto out;
+	}
+
+	if (config->oci.process.stdio_stream < 0  ||
+			config->oci.process.stderr_stream < 0 ) {
+		g_critical("invalid io stream number");
+		goto out;
+	}
+
+	if (! cc_proxy_run_hyper_new_container (config,
+						container_id,
+						rootfs, image)) {
 		goto out;
 	}
 
 	ret = true;
 out:
-	if (newcontainer_payload) {
-		json_object_unref (newcontainer_payload);
-	}
-
 	if (config && config->proxy) {
 		cc_proxy_disconnect (config->proxy);
 	}
 
 	return ret;
+}
+/**
+ * Request \ref CC_OCI_PROXY to start a new standalone
+ * container (e.g. a Docker one) using intial worload
+ * from \ref cc_oci_config.
+ *
+ * \param config
+ *
+ * \return \c true on success, else \c false.
+ */
+gboolean
+cc_proxy_hyper_new_container (struct cc_oci_config *config)
+{
+	return cc_proxy_hyper_new_pod_container(config,
+						config->optarg_container_id,
+						config->optarg_container_id,
+						"", "");
 }
 
 /**
@@ -1399,14 +1433,21 @@ cc_proxy_hyper_kill_container (struct cc_oci_config *config, int signum)
 	JsonObject *killcontainer_payload;
 	char       *signum_str = NULL;
 	gboolean    ret = false;
+	const gchar *container_id;
 
 	if (! (config && config->proxy)) {
 		return false;
 	}
+
+	container_id = cc_pod_container_id(config);
+	if (! container_id) {
+		return false;
+	}
+
 	if (! cc_proxy_connect (config->proxy)) {
 		return false;
 	}
-	if (! cc_proxy_attach (config->proxy, config->optarg_container_id)) {
+	if (! cc_proxy_attach (config->proxy, container_id)) {
 		return false;
 	}
 
