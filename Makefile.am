@@ -272,10 +272,13 @@ cc_proxy_extra_dist =			\
 	proxy/README.md			\
 	proxy/COPYING
 
+if PROXY_TESTS
+
 CHECK_DEPS += check-proxy
 
 check-proxy:
 	go test -v -race -timeout 2s $(srcdir)/proxy
+endif
 
 check-go:
 	@$(top_srcdir)/.ci/ci-go-static-checks.sh

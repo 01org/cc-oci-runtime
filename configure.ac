@@ -89,6 +89,23 @@ AS_IF([test x"$enable_cppcheck" = "xyes"],
     [AC_SUBST([CPPCHECK], [0])])
 AM_CONDITIONAL([CPPCHECK], [test x$enable_cppcheck = x"yes"])
 
+# Runtime proxy tests
+
+AC_ARG_ENABLE(proxy-tests,
+              AS_HELP_STRING([--disable-proxy-tests],
+                             [disable proxy tests @<:@default=no@:>@]))
+
+# If "--[enable|disable]-proxy-tests" isn't specified, the variable will not
+# have a value (meaning *DO* run the tests).
+AS_IF([test x"$enable_proxy_tests" = x"yes" -o x"$enable_proxy_tests" = x""],
+    [run_proxy_tests=yes],
+    [run_proxy_tests=no])
+
+AS_IF([test x"$run_proxy_tests" = x"yes"],
+    [AC_SUBST([PROXY_TESTS], [1])],
+    [AC_SUBST([PROXY_TESTS], [0])])
+AM_CONDITIONAL([PROXY_TESTS], [test x"$run_proxy_tests" = x"yes"])
+
 # Runtime functional tests
 
 AC_ARG_ENABLE(functional-tests,
@@ -328,6 +345,7 @@ cc-oci-runtime - $VERSION
  • Tests:
 
        Unit tests               : $enable_tests
+       Proxy tests              : $run_proxy_tests
        Functional tests         : $run_functional_tests
        Docker tests             : $run_docker_tests
        Cppcheck                 : $enable_cppcheck
