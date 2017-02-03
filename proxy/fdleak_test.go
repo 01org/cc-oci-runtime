@@ -51,7 +51,7 @@ type FdInfo struct {
 }
 
 func (info *FdInfo) dump(w io.Writer) {
-	flags := make([]string, 5)
+	flags := make([]string, 0, 5)
 
 	if info.CloseOnExec {
 		flags = append(flags, "cloexec")
@@ -86,7 +86,7 @@ func (info *FdInfo) dump(w io.Writer) {
 	}
 
 	fmt.Fprintf(w, "  %d: %s (%s)\n", info.Fd, info.Text,
-		strings.Join(flags, ""))
+		strings.Join(flags, " "))
 }
 
 func (info *FdInfo) equal(other *FdInfo) bool {
@@ -289,6 +289,15 @@ func TestFdDetectorLeak(t *testing.T) {
 	buffer := bytes.NewBuffer(nil)
 	equal := detector.Compare(buffer, old, new)
 	if equal {
+		fmt.Print(buffer.String())
+		t.Fatal()
+	}
+
+	const expectedMsg = `+ fd 3
+  3: /dev/null (cloexec)
+`
+	msg := buffer.String()
+	if msg != expectedMsg {
 		fmt.Print(buffer.String())
 		t.Fatal()
 	}

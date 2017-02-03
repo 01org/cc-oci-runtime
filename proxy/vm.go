@@ -150,13 +150,16 @@ func (vm *vm) ioHyperToClients() {
 
 		err = hyperstart.SendIoMessageWithConn(session.client, msg)
 		if err != nil {
-			fmt.Fprintf(os.Stderr,
-				"error writing I/O data to client: %v\n", err)
-			break
+			// When the shim is forcefully killed, it's possible we
+			// still have data to write. Ignore errors for that case.
+			vm.infof(1, "io", "error writing I/O data to client:", err)
+			vm.closeSession(session)
+			continue
 		}
 	}
 
-	// Having an error on read/write is interpreted as having lost the VM.
+	// Having an error on the IO channel read is interpreted as having lost
+	// the VM.
 	vm.signalVMLost()
 	vm.wg.Done()
 }
@@ -268,6 +271,16 @@ func (vm *vm) AllocateIo(n int, clientID uint64, c net.Conn) uint64 {
 func (session *ioSession) Close() {
 	session.client.Close()
 	session.wg.Wait()
+}
+
+func (vm *vm) closeSession(session *ioSession) {
+	vm.Lock()
+	for i := 0; i < session.nStreams; i++ {
+		delete(vm.ioSessions, session.ioBase+uint64(i))
+	}
+	vm.Unlock()
+
+	session.Close()
 }
 
 func (vm *vm) Close() {
