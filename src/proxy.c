@@ -1294,9 +1294,6 @@ cc_proxy_run_hyper_new_container (struct cc_oci_config *config,
 	JsonObject *process = NULL;
 	JsonArray *args= NULL;
 	JsonArray *envs= NULL;
-	JsonArray *additional_gids = NULL;
-	gchar     *uid_str = NULL;
-	gchar     *gid_str = NULL;
 
 	/* json stanza for NEWCONTAINER*/
 	/*
@@ -1305,12 +1302,6 @@ cc_proxy_run_hyper_new_container (struct cc_oci_config *config,
 	   "rootfs": "??",
 	   "image": "??",
 	   "process": {
-	   "user":"999",
-	   "group":"999",
-	   "additionalGroups": [
-	   "group1",
-	   "group2",
-	   ],
 	   "terminal": true,
 	   "stdio": 1,
 	   "stderr": 2,
@@ -1383,36 +1374,6 @@ cc_proxy_run_hyper_new_container (struct cc_oci_config *config,
 
 	json_object_set_string_member (process, "workdir",
 			config->oci.process.cwd);
-
-	/* Hyperstart is not able to handle uid 0. This is a bug.
-	 * Fix pending: https://github.com/clearcontainers/hyperstart/pull/2
-	 */
-	if ((int)config->oci.process.user.uid == 0) {
-		json_object_set_string_member (process, "user", "root");
-	} else {
-		uid_str = g_strdup_printf("%d", config->oci.process.user.uid);
-		gid_str = g_strdup_printf("%d", config->oci.process.user.gid);
-
-		json_object_set_string_member (process, "user", uid_str);
-		json_object_set_string_member (process, "group", gid_str);
-
-		g_free(uid_str);
-		g_free(gid_str);
-	}
-
-	if (config->oci.process.user.additionalGids) {
-		additional_gids = json_array_new();
-
-		char **gids = config->oci.process.user.additionalGids;
-		while (*gids != NULL) {
-			json_array_add_string_element (additional_gids,
-							*gids);
-			gids++;
-		}
-		json_object_set_array_member (process, "additionalGroups",
-						additional_gids);
-        }
-
 
 	// FIXME match with config or find a good default
 	json_object_set_string_member (newcontainer_payload,
