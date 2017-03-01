@@ -50,6 +50,8 @@ STORED_COMMIT = $(shell cat $(builddir)/commit_id 2>/dev/null || cat $(srcdir)/c
 SYSCONFDIR = $(sysconfdir)/$(PACKAGE_NAME)
 DEFAULTSDIR = $(datadir)/defaults/$(PACKAGE_NAME)
 
+INSERT_BOOTCHART_SH = tests/metrics/workload_time/bootchart/insert_bootchart_service.sh
+
 src/commands/cc_oci_runtime-version.$(OBJEXT): \
 	 commit_id
 
@@ -65,6 +67,7 @@ GENERATED_FILES = \
 	tests/functional/data/config-minimal-cc-oci.json \
 	tests/metrics/density/docker_cpu_usage.sh \
 	tests/metrics/density/docker_memory_usage.sh \
+	$(INSERT_BOOTCHART_SH) \
 	tests/metrics/workload_time/cor_create_time.sh
 
 $(GENERATED_FILES): %: %.in Makefile
@@ -89,6 +92,7 @@ $(GENERATED_FILES): %: %.in Makefile
 		-e 's|[@]DOCKER_UBUNTU_VERSION[@]|$(DOCKER_UBUNTU_VERSION)|g' \
 		-e 's|[@]DOCKER_ENGINE_UBUNTU_VERSION[@]|$(DOCKER_ENGINE_UBUNTU_VERSION)|g' \
 		-e 's|[@]ABS_BUILDDIR[@]|$(abs_builddir)|g' \
+		-e 's|[@]CC_IMAGE_SYSTEMDSYSTEMUNIT_PATH[@]|$(ccimage_systemdfilesdir)|g' \
 		"$<" > "$@"
 
 if FUNCTIONAL_TESTS
@@ -129,7 +133,13 @@ cc_image_systemd_files = \
 if CC_IMAGE_SYSTEMDSYSTEMUNIT
 ccimage_systemdfilesdir= @CC_IMAGE_SYSTEMDSYSTEMUNIT_PATH@
 ccimage_systemdfiles_DATA = $(cc_image_systemd_files)
+else
+#default container image services path
+ccimage_systemdfilesdir= "/usr/lib/systemd/system"
 endif
+
+insert-bootchart: $(INSERT_BOOTCHART_SH) $(CONTAINERS_IMG)
+	bash $(abs_builddir)/$(INSERT_BOOTCHART_SH) $(CONTAINERS_IMG)
 
 AM_CFLAGS = -std=gnu99 -fstack-protector -Wall -pedantic \
 	-Wstrict-prototypes -Wundef -fno-common \
@@ -340,6 +350,7 @@ EXTRA_DIST = \
 	tests/lib \
 	tests/metrics/density/docker_cpu_usage.sh.in \
 	tests/metrics/density/docker_memory_usage.sh.in \
+	$(INSERT_BOOTCHART_SH).in \
 	tests/metrics/workload_time/cor_create_time.sh.in
 
 if CPPCHECK

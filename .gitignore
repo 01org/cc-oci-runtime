@@ -62,3 +62,4 @@ tags
 test-driver
 tests/functional/common.bash
 tests/functional/data/config-minimal-cc-oci.json
+tests/metrics/workload_time/bootchart/insert_bootchart_service.sh.in

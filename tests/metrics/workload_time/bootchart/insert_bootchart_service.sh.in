@@ -1,0 +1,112 @@
+#!/bin/bash
+#  This file is part of cc-oci-runtime.
+#
+#  Copyright (C) 2016 Intel Corporation
+#
+#  This program is free software; you can redistribute it and/or
+#  modify it under the terms of the GNU General Public License
+#  as published by the Free Software Foundation; either version 2
+#  of the License, or (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program; if not, write to the Free Software
+#  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+#This script can be used to insert debug services to a clear containers image.
+
+
+set -e
+
+script_name=${0##*/}
+bootchart_service="@ABS_BUILDDIR@/data/cc-bootchart.service"
+cc_agent_service="@ABS_BUILDDIR@/data/cc-agent.service"
+cc_agent_target="@ABS_BUILDDIR@/data/cc-agent.target"
+
+services="${bootchart_service} ${cc_agent_service} ${cc_agent_target}"
+
+image=$1
+
+die()
+{
+	msg="$*"
+	echo "ERROR: ${msg}" >&2
+	exit 1
+}
+info()
+{
+	msg="$*"
+	echo "INFO: ${msg}" >&2
+}
+
+usage()
+{
+	cat <<EOT
+Usage: ${script_name} CONTAINER_IMAGE MOUNT_DIRECTORY"
+
+CONTAINER_IMAGE: Clear Container image to modify
+
+EOT
+	exit 0
+} 
+
+
+
+mount_image()
+{
+	image=$1
+	mount_dir=$2
+
+	[ -f "${image}" ] || die "image does not exist: ${image}"
+	[ -d "${mount_dir}" ] || die "mount directory not exist: ${mount_dir}"
+
+	device=$(losetup -fP --show "${image}")
+
+	#In clear containers image the root partition is always the first
+	root_partition="${device}p1"
+
+	mount "${root_partition}" "${mount_dir}"
+	info "${image}(${device}) mounted in ${mount_dir}"
+}
+
+
+umount_image(){
+	image=$1
+	mount_dir=$2
+
+	[ -f "${image}" ] || die "image does not exist: ${image}"
+	[ -d "$mount_dir" ] || die "mount directory does not exist: $image"
+
+	device=$(losetup -j "${image}" --list -O NAME -n)
+	
+	umount "${mount_dir}"
+	losetup -d "${device}"
+}
+
+
+[ -n "${image}" ] || usage
+[ -f "${image}" ] || die "image does not exist: ${image}"
+
+if [ $EUID -ne 0 ]; then
+	die "need to run as root"
+fi
+
+mount_dir=$(mktemp -d cc-image-XXXXXXX)
+mount_image "${image}" "${mount_dir}"
+
+[ -n "${mount_dir}/@CC_IMAGE_SYSTEMDSYSTEMUNIT_PATH@" ] || \
+	die "CC_IMAGE_SYSTEMDSYSTEMUNIT_PATH not found"
+
+info "copying ${services} to ${mount_dir}/@CC_IMAGE_SYSTEMDSYSTEMUNIT_PATH@/"
+
+cp ${services} ${mount_dir}/@CC_IMAGE_SYSTEMDSYSTEMUNIT_PATH@/
+
+umount_image "${image}" "${mount_dir}"
+
+#clean up
+info "remove mount directory ${mount_dir}"
+rm -r "$mount_dir"

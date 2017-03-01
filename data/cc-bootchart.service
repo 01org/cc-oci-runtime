@@ -1,0 +1,8 @@
+[Unit]
+Description=Copy systemd-bootchart to container rootfs
+
+[Service]
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Type=simple
+#wait some time before copy the bootchart svg
+ExecStart=/usr/bin/bash -c 'sleep 2; cp /run/log/*.svg /tmp/hyper/shared/run'
