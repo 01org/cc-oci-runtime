@@ -27,7 +27,7 @@
  * and we chose to name the interface ovd_<ip address> during endpoint creation
  * in the OVSDPDK Docker plugin.  OVS_PORT_PATH is used to identify this file.
  */
-#define OVS_PORT_PATH "/var/run/openvswitch/ovd_%s"
+#define OVS_PORT_PATH "/tmp/v_%s"
 
 void cc_oci_net_interface_free (struct cc_oci_net_if_cfg *if_cfg);
 
