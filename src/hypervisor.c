@@ -114,7 +114,7 @@ out:
  */
 #define DPDK_CMDLINE_OBJ "memory-backend-file,id=dpdkmem,size=2048M,mem-path=/dev/hugepages,share=on,prealloc=on"
 #define DPDK_CMDLINE_NUMA "node,memdev=dpdkmem"
-#define DPDK_CMDLINE_CHAR "socket,id=char1,path=/run/openvswitch/ovd_%s"
+#define DPDK_CMDLINE_CHAR "socket,id=char1,path=" OVS_PORT_PATH
 #define DPDK_CMDLINE_NETD "type=vhost-user,id=mynet1,chardev=char1,vhostforce"
 #define DPDK_CMDLINE_DEV  "virtio-net-pci,netdev=mynet1,mac=%s"
 
