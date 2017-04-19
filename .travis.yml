@@ -24,6 +24,9 @@ script:
 after_failure:
 - "./.ci/ci-teardown.sh"
 
+after_failure:
+- ./.travis-teardown.sh
+
 notifications:
   email:
     recipients:
