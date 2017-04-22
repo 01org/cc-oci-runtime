@@ -22,7 +22,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/containers/virtcontainers/hyperstart"
+	"github.com/containers/virtcontainers/pkg/hyperstart"
 	"github.com/golang/glog"
 )
 
