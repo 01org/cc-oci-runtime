@@ -114,9 +114,9 @@ out:
  */
 #define DPDK_CMDLINE_OBJ "memory-backend-file,id=dpdkmem,size=2048M,mem-path=/dev/hugepages,share=on,prealloc=on"
 #define DPDK_CMDLINE_NUMA "node,memdev=dpdkmem"
-#define DPDK_CMDLINE_CHAR "socket,id=char1,path=" OVS_PORT_PATH
-#define DPDK_CMDLINE_NETD "type=vhost-user,id=mynet1,chardev=char1,vhostforce"
-#define DPDK_CMDLINE_DEV  "virtio-net-pci,netdev=mynet1,mac=%s"
+#define DPDK_CMDLINE_CHAR "socket,id=char%d,path=" OVS_PORT_PATH
+#define DPDK_CMDLINE_NETD "type=vhost-user,id=mynet%d,chardev=char%d,vhostforce"
+#define DPDK_CMDLINE_DEV  "virtio-net-pci,netdev=mynet%d,mac=%s"
 
 /*!
  * Expand OVS-DPDK qemu option for character device
@@ -124,7 +124,7 @@ out:
  * \param if_cfg \ref cc_oci_net_if_cfg.
  */
 static gchar *
-cc_oci_expand_ovsdpdk_chardev_params(struct cc_oci_net_if_cfg *if_cfg) {
+cc_oci_expand_ovsdpdk_chardev_params(struct cc_oci_net_if_cfg *if_cfg, int index) {
 	struct cc_oci_net_ipv4_cfg *ipv4_cfg = NULL;
 	gchar *ovs_port_path = NULL;
 	guint i;
@@ -148,7 +148,7 @@ cc_oci_expand_ovsdpdk_chardev_params(struct cc_oci_net_if_cfg *if_cfg) {
 		if (g_file_test (ovs_port_path, G_FILE_TEST_EXISTS)) {
 			// this is the match
 			g_free(ovs_port_path);
-			return g_strdup_printf(DPDK_CMDLINE_CHAR, ipv4_cfg->ip_address);
+			return g_strdup_printf(DPDK_CMDLINE_CHAR, index, ipv4_cfg->ip_address);
 		}
 		g_free(ovs_port_path);
 	}
@@ -195,14 +195,14 @@ cc_oci_append_network_args(struct cc_oci_config *config,
 				ovs_flag = 1;
 
 				g_ptr_array_add(additional_args, g_strdup("-chardev"));
-				ovsdpdk_params = cc_oci_expand_ovsdpdk_chardev_params(if_cfg);
+				ovsdpdk_params = cc_oci_expand_ovsdpdk_chardev_params(if_cfg, index);
 				g_ptr_array_add(additional_args, ovsdpdk_params);
 
 				g_ptr_array_add(additional_args, g_strdup("-netdev"));
-				g_ptr_array_add(additional_args, g_strdup(DPDK_CMDLINE_NETD));
+				g_ptr_array_add(additional_args, g_strdup_printf(DPDK_CMDLINE_NETD,index,index));
 
 				g_ptr_array_add(additional_args, g_strdup("-device"));
-				g_ptr_array_add(additional_args, g_strdup_printf(DPDK_CMDLINE_DEV,if_cfg->mac_address));
+				g_ptr_array_add(additional_args, g_strdup_printf(DPDK_CMDLINE_DEV,index,if_cfg->mac_address));
 			} else {
 				netdev_params = cc_oci_expand_netdev_cmdline(config, index);
 				net_device_params = cc_oci_expand_net_device_cmdline(config, index);
