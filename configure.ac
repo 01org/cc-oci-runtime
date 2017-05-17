@@ -20,8 +20,9 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #
 
+
 AC_PREREQ([2.69])
-AC_INIT([cc-oci-runtime], [2.1.8])
+AC_INIT([cc-oci-runtime], m4_esyscmd_s([cat versions.txt  | grep cc_oci_runtime_version | cut -d'=' -f2]))
 AC_CONFIG_MACRO_DIR([m4])
 AM_INIT_AUTOMAKE([foreign -Wall -Werror -Wno-portability silent-rules subdir-objects color-tests no-dist-gzip dist-xz])
 AM_SILENT_RULES([yes])

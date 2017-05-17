@@ -15,3 +15,4 @@ mpfr_version=3.1.4
 gmp_version=6.1.0
 mpc_version=1.0.3
 autoconf_archive_version=2017.03.21
+cc_oci_runtime_version=2.1.8
