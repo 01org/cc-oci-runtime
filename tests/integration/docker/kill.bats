@@ -43,6 +43,8 @@ setup() {
 	attempts=5
 	signal=SIGUSR1
 	$DOCKER_EXE run -dti --name $container ubuntu bash -c "trap \"exit ${exit_code}\" $signal ; while : ; do sleep 1; done"
+	# bug: https://github.com/01org/cc-oci-runtime/issues/828
+	sleep 2
 	$DOCKER_EXE kill -s $signal $container
 	# waiting kill signal
 	for i in `seq 1 $attempts` ; do
