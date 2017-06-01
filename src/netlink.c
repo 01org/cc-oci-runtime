@@ -39,6 +39,13 @@
 #include "util.h"
 #include "networking.h"
 
+/* We need to define this as this enum may not be present
+ * in older kernels. There isn't a way to check for its presence
+ * as the definition associated (IFLA_BR_MAX) with this enum
+ * is not available as preprocessor time.
+ */
+#define IFLA_BR_MCAST_SNOOPING 23
+
 /*!
  * Setup the netlink socket to use with netlink
  * transactions.

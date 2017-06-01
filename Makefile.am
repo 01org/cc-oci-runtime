@@ -58,8 +58,6 @@ GENERATED_FILES = \
 	data/cc-oci-runtime.sh \
 	data/config.json \
 	data/run-bats.sh \
-	data/dockerFiles/Dockerfile.fedora \
-	data/dockerFiles/Dockerfile.ubuntu \
 	data/vm.json \
 	tests/functional/common.bash \
 	tests/functional/run-functional-tests.sh \
@@ -70,6 +68,7 @@ GENERATED_FILES = \
 	tests/metrics/network/network-metrics-cpu-consumption.sh \
 	tests/metrics/network/network-metrics-memory-pss.sh \
 	tests/metrics/network/network-metrics-memory-1g.sh \
+	tests/metrics/network/network-metrics-memory-rss-1g.sh \
 	tests/lib/test-common.bash
 
 $(GENERATED_FILES): %: %.in Makefile
@@ -157,6 +156,7 @@ DISTCHECK_CONFIGURE_FLAGS = \
 	--enable-valgrind \
 	--disable-valgrind-helgrind \
 	--disable-valgrind-drd \
+	--disable-valgrind-sgcheck \
 	--enable-code-coverage \
 	--enable-functional-tests \
 	--with-systemdsystemunitdir=/tmp/cc-distcheck/systemdunitdir/
@@ -363,9 +363,6 @@ EXTRA_DIST = \
 	$(cc_shim_extra_dist) \
 	$(systemdservice_in_files) \
 	data/cc-oci-runtime.sh.in \
-	data/dockerFiles/Dockerfile.fedora.in \
-	data/dockerFiles/Dockerfile.ubuntu.in \
-	data/dockerFiles/Dockerfile.clearlinux \
 	$(bats_test_sources) \
 	tests/functional/run-functional-tests.sh.in \
 	tests/integration \
@@ -374,6 +371,7 @@ EXTRA_DIST = \
 	tests/metrics/density/docker_memory_usage.sh.in \
 	tests/metrics/workload_time/cor_create_time.sh.in \
 	tests/metrics/network/network-metrics-cpu-consumption.sh.in \
+	tests/metrics/network/network-metrics-memory-rss-1g.sh.in \
 	tests/metrics/network/network-metrics-memory-pss.sh.in \
 	tests/metrics/network/network-metrics-memory-1g.sh.in \
 	vendor \

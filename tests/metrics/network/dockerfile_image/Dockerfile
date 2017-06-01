@@ -1,6 +1,6 @@
 #  This file is part of cc-oci-runtime.
 #
-#  Copyright (C) 2016 Intel Corporation
+#  Copyright (C) 2017 Intel Corporation
 #
 #  This program is free software; you can redistribute it and/or
 #  modify it under the terms of the GNU General Public License
@@ -17,30 +17,24 @@
 #  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #
 
-FROM clearlinux:latest
+# Usage: FROM [image name]
+FROM ubuntu
 
-# Update to latest version and install needed bundles to
-# build cc-oci-runtime and to run Clear Containers
-RUN swupd update
-RUN swupd bundle-add containers-basic-dev editors os-testsuite
+# Ensure packages are current, then install:
+#
+# - a basic development environment
+# - and additional general tooling
+#
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    smem \
+    iperf3 \
+    iperf
 
-# Install TAP HTML formatter
-RUN cpan install TAP::Formatter::HTML
-
-# Move the root image created by make-bundle-dir.sh into the specified
-# directory.
-# https://github.com/01org/cc-oci-runtime/blob/master/data/make-bundle-dir.sh
-ADD rootfs /var/lib/oci/bundle/rootfs
-
-# Create /root/go directory for $GOPATH
-RUN mkdir /root/go
-
-# Create /var/run to let docker deamon run
-RUN mkdir /var/run
-
-# Set $GOPATH and HOME env variables
-ENV GOPATH /root/go
-ENV HOME /root
-WORKDIR $HOME
+# Install nuttcp (Network performance measurement tool)
+RUN cd $HOME && \
+    curl -OkL "http://nuttcp.net/nuttcp/beta/nuttcp-7.3.2.c" && \
+    gcc nuttcp-7.3.2.c -o nuttcp
 
 CMD ["/bin/bash"]

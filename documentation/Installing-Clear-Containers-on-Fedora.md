@@ -1,4 +1,12 @@
-# Install the Clear Containers runtime on Fedora 25
+# Install the Clear Containers runtime on Fedora
+
+## Introduction
+
+Clear Containers 2.1 is available for Fedora\* versions **24** and **25**.
+Clear Containers supports the latest version of Docker\* CE, currently 17.05,
+with the exception of Swarm\*. If you require Swarm, install Docker version
+1.12.1.
+
 
 ## Install the Clear Containers runtime
 ```
@@ -7,10 +15,17 @@ http://download.opensuse.org/repositories/home:clearlinux:preview:clear-containe
 $ sudo dnf install cc-oci-runtime linux-container
 ```
 
-## Install docker 1.12
+## Install Docker
 
-For compatibility reasons, docker 1.12.1 is required. This is not available
-in Fedora 25, so we will pull from the Fedora 24 repository:
+This step is optional and only required in case Docker is not
+installed on the system or an specific version of Docker is
+required.
+
+Execute the commands for only one of the two following options.
+
+### Option 1) Docker 1.12.1 compatible with Swarm
+
+Docker 1.12.1 is not available in Fedora 25. Therefore, pull from the Fedora 24 repository:
 
 ```
 $ sudo dnf config-manager --add-repo \
@@ -26,6 +41,22 @@ Install docker engine:
 ```
 $ sudo dnf install docker-engine-1.12.1-1.fc24
 ```
+
+### Option 2) Docker 17
+
+**Caution:** Clear Containers 2.1 and Swarm will not work correctly on Docker 17.
+
+```
+$ sudo dnf -y install dnf-plugins-core
+$ sudo dnf config-manager \
+    --add-repo \
+    https://download.docker.com/linux/fedora/docker-ce.repo
+$ sudo dnf makecache fast
+$ sudo dnf install docker-ce
+```
+
+For more information on installing Docker please refer to the
+[Docker Guide](https://docs.docker.com/engine/installation/linux/fedora)
 
 ## Configure docker to use Clear Containers by default
 ```
@@ -59,7 +90,9 @@ Note: this should not be necessary if you update `--default-runtime` setting in 
 ## Increase limits (optional)
 If you are running a recent enough kernel (4.3+), you should consider
 increasing the `TasksMax=` systemd setting. Without this, the number of
-Clear Containers you are able to run will be limited.  A sample of the error which may manifest can be seen at [issue 154] (https://github.com/01org/cc-oci-runtime/issues/154).
+Clear Containers you are able to run will be limited.  A example of the error
+which may occur can be seen at:
+[issue 154](https://github.com/01org/cc-oci-runtime/issues/154).
 
 
 Run the commands below and if they display `OK`, proceed, else skip this

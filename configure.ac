@@ -21,7 +21,7 @@
 #
 
 AC_PREREQ([2.69])
-AC_INIT([cc-oci-runtime], [2.1.7])
+AC_INIT([cc-oci-runtime], [2.1.9])
 AC_CONFIG_MACRO_DIR([m4])
 AM_INIT_AUTOMAKE([foreign -Wall -Werror -Wno-portability silent-rules subdir-objects color-tests no-dist-gzip dist-xz])
 AM_SILENT_RULES([yes])
@@ -32,15 +32,12 @@ AC_LANG(C)
 
 LT_INIT
 
-source $srcdir/versions.txt
-
 # Check for macros
 AC_DEFUN_ONCE([MACRO_CHECK],
 [
-	ifdef([$1], true, [AC_FATAL([Please install autoconf-archive version ${autoconf_archive_version}],)])
+	ifdef([$1], true, [AC_FATAL([Please install autoconf-archive],)])
 ])
 
-MACRO_CHECK([AX_VALGRIND_DFLT])
 MACRO_CHECK([AX_VALGRIND_CHECK])
 MACRO_CHECK([AX_CODE_COVERAGE])
 
@@ -156,6 +153,8 @@ AS_IF([test x"$run_crio_tests" = x"yes"],
 AM_CONDITIONAL([CRIO_TESTS], [test x"$run_crio_tests" = x"yes"])
 
 # Checks for libraries.
+source $srcdir/versions.txt
+
 PKG_CHECK_MODULES([GLIB], [glib-2.0 >= "$glib_version"], have_required_glib=yes, have_required_glib=no)
 AS_IF([test "$have_required_glib" != "yes"], AC_MSG_ERROR([ERROR: need glib ${glib_version}+ for the `G_FILE_MONITOR_WATCH_MOVES' flag]))
 
@@ -257,9 +256,7 @@ AC_DEFINE_UNQUOTED([QEMU_PATH], ["$QEMU_PATH"], "Path to qemu with pc-lite suppo
 AC_SUBST([CMDLINE], [$(cat $srcdir/data/kernel-cmdline)])
 
 # Read Dockerfile parameters
-AC_SUBST([DOCKER_FEDORA_VERSION], [$docker_fedora_version])
 AC_SUBST([DOCKER_ENGINE_FEDORA_VERSION], [$docker_engine_fedora_version])
-AC_SUBST([DOCKER_UBUNTU_VERSION], [$docker_ubuntu_version])
 AC_SUBST([DOCKER_ENGINE_UBUNTU_VERSION], [$docker_engine_ubuntu_version])
 
 # Sytemd unit files (host)
@@ -375,7 +372,6 @@ AC_ARG_ENABLE([autogopath],
 )
 AM_CONDITIONAL([AUTOGOPATH], [test x$autogopath = xtrue])
 
-AX_VALGRIND_DFLT([sgcheck], [off])
 AX_VALGRIND_CHECK
 AX_CODE_COVERAGE
 
