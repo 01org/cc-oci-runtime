@@ -290,6 +290,11 @@ cc_run_hook(struct oci_cfg_hook* hook, const gchar* state,
 		return false;
 	}
 
+	if (! hook->path) {
+		g_critical("hook path is empty");
+		return false;
+	}
+
 	if (hook->path[0] != '/') {
 		g_critical ("hook full path not specified");
 		return false;
@@ -380,7 +385,7 @@ fail_child:
 	close_if_set (stdin_pipe[1]);
 	close_if_set (pipe_parent_error[1])
 
-	/* waiting for parent setup */
+	/* waiting for child setup */
 	if (read (pipe_child_error[0], &c, sizeof(c)) > 0) {
 		g_critical ("hook setup failed");
 		goto fail4;
