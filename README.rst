@@ -67,7 +67,7 @@ Limitations
 
 See:
 
-- https://github.com/01org/cc-oci-runtime/wiki/Limitations
+- https://github.com/01org/cc-oci-runtime/wiki/Limitations-2.1.0
 
 Running under ``docker``
 ------------------------
